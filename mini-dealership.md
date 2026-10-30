@@ -44,8 +44,8 @@ sunucusu), **panel arayüzü** ve **PostgreSQL veritabanı**. Hedef: tek komutla
 
 - Bayi tek markalıdır (ör. Hyundai): sattığı ve servis verdiği bütün araçlar
   aynı markadan
-- Bayinin farklı şehirlerde birden çok şubesi var, her şubenin kendi mesai
-  saatleri var
+- Bayinin farklı şehirlerde birden çok şubesi var; mesai saatleri ve randevu
+  türlerinin saat aralıkları tüm şubelerde aynıdır
 - Her çalışan tek bir şubede ve tek bir departmanda (satış ya da servis)
   çalışır. Ayrıca sertifika ve yetkinlikleri vardır (ör. test sürüşü yetkisi);
   bir çalışanın birden çok yetkinliği olabilir
