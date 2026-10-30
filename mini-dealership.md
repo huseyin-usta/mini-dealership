@@ -227,6 +227,27 @@ Rehberin özellikle istediği ve projede göstereceğimiz şeyler:
 - **Ekip:** rehbere göre 2–3 kişi; herkes tasarımdan koda her aşamada görev
   alır
 
+## Görev dağılımı
+
+Ortak:
+
+- EER → ilişkisel şema → DDL aktarımı ve review
+- Analitik sorgular (≥5) + EXPLAIN ANALYZE / indeks analizi
+- Son rapor yazımı + demo hazırlığı
+
+Hüseyin Yiğit USTA:
+
+- WhatsApp köprüsü (Baileys)
+- Backend bot mantığı (müsaitlik hesabı, randevu, iptal)
+- Docker Compose / altyapı
+- Transaction yönetimi (satış akışı)
+
+Şevda Yağmur ASAL:
+
+- Panel (HTML/JS) + panel menüleri
+- View'lar (maskeli rapor view'ları, müşteri son randevusu) + Excel raporu (tek yönlü)
+- Veri üretici
+
 ## Genişletme fikirleri
 
 Temel sistem oturduktan sonra proje bu yönlerde büyütülebilir:
