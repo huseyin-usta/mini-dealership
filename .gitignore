@@ -1,0 +1,27 @@
+# El ile kurulan bağlam ve hocaya gitmeyecek dokümanlar
+CLAUDE.md
+AGENTS.md
+dokumanlar/
+
+# Ortam ve gizli bilgiler
+.env
+.env.*
+
+# Derleme çıktıları
+target/
+*.class
+node_modules/
+
+# Üretilen sentetik veri (üretici script takip edilir, çıktı edilmez)
+veri/uretilen/
+
+# PostgreSQL ve Docker çalışma zamanı
+pgdata/
+*.dump
+
+# Baileys WhatsApp oturumu (kimlik bilgisi içerir)
+auth_info*/
+.baileys*/
+
+# İşletim sistemi
+.DS_Store
