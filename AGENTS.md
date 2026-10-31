@@ -64,17 +64,36 @@ session'lara ve ekip arkadaşına bağlam aktarımı içindir.
 
 ## Referans repo (salt-okunur, DOKUNMA)
 
-`~/TOBB` — github.com/huseyin-usta/TOBB, klonlanmış durumda. Eski B2B projesi
-(KOBİ AI Platform). Buradan **yalnızca WhatsApp köprüsü** port edilecek:
+`~/TOBB` — github.com/huseyin-usta/TOBB. **Private repo**; 31 Ekim'de diskten
+silinmişti, gh ile yeniden klonlandı. Eski B2B projesi (KOBİ AI Platform).
+Mimari özeti: `~/TOBB/CLAUDE.md` — okumadan port işine başlama.
 
-- Alınacak: `poc/whatsapp/index.js`, `lib/tools.js`, `lib/capacity.js`,
-  `lib/pricing.js` mantığı, Baileys kurulum deseni, test yapısı anlayışı
-- Alınmayacak: `lib/gdrive*.js`, `lib/excel*.js`, `lib/sqlite-adapter.js`,
-  multi-tenant katmanı, Google OAuth, `poc/cv-analyzer`, `homepage`
-- Referans projenin `CLAUDE.md` dosyası mimariyi açıklar — okumadan port işine
-  başlama.
+Yollar `poc/whatsapp/` altında (handoff'un eski hali yanlış yerden veriyordu).
+
+**Port edilecek (WhatsApp köprüsü + PII desenleri):**
+
+- `poc/whatsapp/index.js` — Baileys 7.0.0-rc13 kurulum deseni, pairing,
+  JID→telefon normalizasyonu, mesaj döngüsü (642 satır)
+- `poc/whatsapp/lib/tools.js` — config-driven tool framework + PII masking
+  (841 satır): `maskRows`, `visibility:"private"`, `mask_fields`,
+  `REDACTED="[gizli]"` sentinel, **fail-closed** (caller yoksa her şey maskeli),
+  membership-oracle guard (maskeli alan aranamaz), `redactKeys` ile tool log
+  redaksiyonu
+- `poc/whatsapp/lib/capacity.js` + `lib/pricing.js` — soft-rules mantığı
+- **Kimlik deseni:** caller = auth'lı WhatsApp JID'sinden (`ctx.callerPhone`),
+  LLM argümanından ASLA — bizde bot rolü + RLS ile aynı ilke
+- **Overbook gate / check→write TTL:** write-lock altında kapasite kontrolü,
+  TOCTOU kapanışı — bizde son savunma DB'deki EXCLUDE kısıtı; bot bu deseni
+  transaction içinde kullanır
+- Test yapısı: `node --test tests/*.test.js` (470 test), tmp temizliği `after()`
+
+**Alınmayacak:** `lib/gdrive*.js`, `lib/excel*.js`, `lib/sqlite-adapter.js`,
+`lib/storage.js`, `lib/store.js` (multi-tenant SQLite katmanı), Google OAuth,
+`dashboard/`, `homepage/`, `poc/cv-analyzer`
+
 - Spec'e göre köprü DB'ye hiç dokunmaz: mesajı backend'e (Java) iletir,
-  cevabı müşteriye gönderir.
+  cevabı müşteriye gönderir. Hard invariant'lar TOBB'da koddaydı; bizde
+  PostgreSQL'de (EXCLUDE, RLS, roller) — köprü port edilirken bu ayrım korunur.
 
 ## Ortam
 
