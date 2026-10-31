@@ -1,0 +1,100 @@
+# Mini-Dealership — Handoff Notları
+
+BIL372 Veritabanı Sistemleri grup projesi çalışma klasörü. Bu dosya yeni
+session'lara ve ekip arkadaşına bağlam aktarımı içindir.
+
+## Kaynak dokümanlar (öncelik sırasıyla)
+
+1. `dokumanlar/Proje_Tanımı.pdf` — hocanın proje rehberi (gereksinimlerin kaynağı)
+2. `dokumanlar/BIL372_MiniDealership_AraRapor_duzenlenmis.pdf` — teslim edilmiş
+   ara rapor (19 Ekim 2026). **Official tasarım dokümanı; çelişki olursa PDF kazanır.**
+3. `mini-dealership.md` — spec; PDF'lerle uyumlu tutulur (ör. mesai kuralı PDF'e
+   göre düzeltildi). Değiştirmeden önce kullanıcıya sor.
+
+## Durum (31 Ekim 2026 itibarıyla)
+
+- GitHub reposu: **github.com/huseyin-usta/mini-dealership** (public, `main`).
+  Commit yazarı: `h.usta@etu.edu.tr` (gt-arc maili KULLANILMAZ).
+  Collaborator: `aslyagm` (Şevda Yağmur ASAL, write yetkisi).
+- İlerleme: `db/` altında **12/20 tablo DDL tamam** (sube, mesai, yetkinlik,
+  calisan, calisan_yetkinlik, model, versiyon, versiyon_ozellik, musteri, mesaj,
+  arac, stok_hareketi).
+- Kalan DDL: `randevu_turu`, `tur_saat`, `randevu` (EXCLUDE çakışma kısıtı),
+  `servis_kaydi`, `servis_durum_gecmisi`, `servis_islem`, `sigorta_sirketi`,
+  `servis_sigorta` → ardından roller + GRANT/REVOKE, garanti trigger, view'lar.
+- Şema görselleştirme: `scripts/sema-diyagram.sh` (tbls + geçici Docker Postgres)
+  → `docs/sema/` çıktısı repoda takip edilir. DDL değişince script'i yeniden çalıştır.
+- Takvim: son rapor **3 Aralık 2026**, dönem sonunda demo.
+- Görev dağılımı: spec'in "Görev dağılımı" bölümünde.
+
+## Kilit mimari kararlar (değiştirme, tartışmak için sor)
+
+- **4 parça:** WhatsApp köprüsü (Node.js+Baileys) · backend (Java, JDBC,
+  ORM yok) · panel (HTML/JS) · PostgreSQL
+- **SQL elle yazılır** — Hibernate/JPA yasak; dersin amacı bu
+- **DB rolleri:** admin / personel / bot / rapor — GRANT/REVOKE ile yetki,
+  hiçbir role DELETE yok (iptal = durum değişikliği, soft olarak)
+- **RLS:** bot yalnızca konuştuğu müşterinin satırlarını görür; müşteri PII'si
+  LLM'e ulaşmaz, rapor rolü maskeli view kullanır
+- **Excel raporu tek yönlü** (DB → Excel). Excel'den geri yazım yok, import yok
+- **Garanti saklanmaz, hesaplanır** — trigger yalnızca "garanti ödemesi"
+  girilmesini engeller; bakım aralığı sabit (bkz. aşağıda)
+- **Veri:** ana işlem tablolarında toplam ≥ 250.000 satır, script ile üretilir
+  (Mockaroo 1.000 satır limitli, yetersiz), üretilen veri kısıtlara uymak zorunda
+- **Normalizasyon BCNF'ye kadar**; EER'de kalıtım, çoka-çok, türetilmiş
+  nitelikler spec'in "EER'de doğal adaylar" bölümünde
+- Demo hedefi: tek komut (Docker Compose) ayağa kalkmalı
+
+### 31 Ekim DDL turunda eklenen kararlar
+
+- **Resmi tasarım = ara rapor (PDF).** Mesai tüm şubelerde ortak (şube bazlı
+  değil); periyodik bakım aralığı sabit: 1 yıl / 15.000 km (kolon yok, trigger
+  sabiti kullanır); bayi tek markalı (marka kolonu yok)
+- **Silmeli design yok:** ayrılan çalışan `aktif_mi=false` (istihdam durumu,
+  online durum değil). FK silme kuralları raporda geçenler hariç default
+  (NO ACTION): model→versiyon→özellik ve servis kaydına bağlı kayıtlar CASCADE
+- **Para kolonları bigint tam sayı (TL)** — kuruş hassasiyeti yok, float yok
+- **PII minimum:** TC/kimlik numarası tutulmaz; `calisan_id` yeterli
+- **Stil:** PK'lar `GENERATED ALWAYS AS IDENTITY`; `db/` dosyaları sayı önekli
+  (10'ar adım, araya 015 gibi dosya girebilir); durum kolonları varchar+CHECK
+  (boolean değil); aracın kilometresi tutulmaz — servis kayıtlarından izlenir
+- **Açık karar (kullanıcıya sorulacak):** spec'teki "bizden alınmamış araç
+  servise ilk geldiğinde kaydedilir" kuralı; yeni varsayımla tüm araçlar ağdan
+  kayıtlı — muhtemelen spec'ten çıkarılacak
+
+## Referans repo (salt-okunur, DOKUNMA)
+
+`~/TOBB` — github.com/huseyin-usta/TOBB, klonlanmış durumda. Eski B2B projesi
+(KOBİ AI Platform). Buradan **yalnızca WhatsApp köprüsü** port edilecek:
+
+- Alınacak: `poc/whatsapp/index.js`, `lib/tools.js`, `lib/capacity.js`,
+  `lib/pricing.js` mantığı, Baileys kurulum deseni, test yapısı anlayışı
+- Alınmayacak: `lib/gdrive*.js`, `lib/excel*.js`, `lib/sqlite-adapter.js`,
+  multi-tenant katmanı, Google OAuth, `poc/cv-analyzer`, `homepage`
+- Referans projenin `CLAUDE.md` dosyası mimariyi açıklar — okumadan port işine
+  başlama.
+- Spec'e göre köprü DB'ye hiç dokunmaz: mesajı backend'e (Java) iletir,
+  cevabı müşteriye gönderir.
+
+## Ortam
+
+- macOS, zsh. Docker Desktop kurulu (daemon gerektiğinde `open -a Docker` ile
+  başlatılır). tbls: `brew install tbls`.
+- GitHub CLI bağlı: `huseyin-usta` (HTTPS, keyring).
+  Email `h.usta@etu.edu.tr` olduğu doğrulanamadı — token'da `user` scope yok;
+  gerekiyorsa `gh auth refresh -h github.com -s user`
+- Collaborator ekleme: `gh api -X PUT repos/huseyin-usta/mini-dealership/collaborators/{user}`
+
+## Kullanıcı ile çalışma
+
+- İletişim Türkçe. Yanıtlar kısa ve öz olsun; gevezelik yok. Kod, commit ve
+  doküman normal dilde (dokümanlar Türkçe — spec Türkçe)
+- Kullanıcı her teknik kararı biliyor; gerekçesiz öneri sunma, net trade-off göster
+- **Review akışı:** dosyalar parça parça yazılır (agent yazar → kullanıcı
+  review eder → onaydan sonra commit). Tablo başına commit yok; DDL mantıklı
+  bloklar halinde, doküman değişiklikleri ayrı commit
+- Geliştirme sırası (spec'ten): EER + şema → veri üretici → sorgular/indeks
+  analizi → Java backend → panel → köprü entegrasyonu. Yeni işe spec'te
+  karşılığı yoksa önce spec'e ekle
+- ECC standartları geçerli: TDD (RED→GREEN), güvenlik (secrets env'de),
+  immutability. Ama ders projesi — pragmatizm önce gelir, aşırı mühendislik yok
