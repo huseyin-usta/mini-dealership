@@ -1,0 +1,1313 @@
+{
+  "name": "postgres",
+  "tables": [
+    {
+      "name": "public.sube",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "sube_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "sehir",
+          "type": "varchar(64)",
+          "nullable": false
+        },
+        {
+          "name": "ad",
+          "type": "varchar(128)",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "sube_pkey",
+          "def": "CREATE UNIQUE INDEX sube_pkey ON public.sube USING btree (sube_id)",
+          "table": "public.sube",
+          "columns": [
+            "sube_id"
+          ]
+        },
+        {
+          "name": "sube_sehir_ad_key",
+          "def": "CREATE UNIQUE INDEX sube_sehir_ad_key ON public.sube USING btree (sehir, ad)",
+          "table": "public.sube",
+          "columns": [
+            "sehir",
+            "ad"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sube_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (sube_id)",
+          "table": "public.sube",
+          "referenced_table": "",
+          "columns": [
+            "sube_id"
+          ]
+        },
+        {
+          "name": "sube_sehir_ad_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (sehir, ad)",
+          "table": "public.sube",
+          "referenced_table": "",
+          "columns": [
+            "sehir",
+            "ad"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.mesai",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "gun",
+          "type": "smallint",
+          "nullable": false
+        },
+        {
+          "name": "acilis",
+          "type": "time without time zone",
+          "nullable": false
+        },
+        {
+          "name": "kapanis",
+          "type": "time without time zone",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "mesai_pkey",
+          "def": "CREATE UNIQUE INDEX mesai_pkey ON public.mesai USING btree (gun)",
+          "table": "public.mesai",
+          "columns": [
+            "gun"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "mesai_check",
+          "type": "CHECK",
+          "def": "CHECK ((acilis \u003c kapanis))",
+          "table": "public.mesai",
+          "referenced_table": "",
+          "columns": [
+            "acilis",
+            "kapanis"
+          ]
+        },
+        {
+          "name": "mesai_gun_check",
+          "type": "CHECK",
+          "def": "CHECK (((gun \u003e= 1) AND (gun \u003c= 7)))",
+          "table": "public.mesai",
+          "referenced_table": "",
+          "columns": [
+            "gun"
+          ]
+        },
+        {
+          "name": "mesai_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (gun)",
+          "table": "public.mesai",
+          "referenced_table": "",
+          "columns": [
+            "gun"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.yetkinlik",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "yetkinlik_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "kod",
+          "type": "varchar(32)",
+          "nullable": false
+        },
+        {
+          "name": "ad",
+          "type": "varchar(128)",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "yetkinlik_pkey",
+          "def": "CREATE UNIQUE INDEX yetkinlik_pkey ON public.yetkinlik USING btree (yetkinlik_id)",
+          "table": "public.yetkinlik",
+          "columns": [
+            "yetkinlik_id"
+          ]
+        },
+        {
+          "name": "yetkinlik_kod_key",
+          "def": "CREATE UNIQUE INDEX yetkinlik_kod_key ON public.yetkinlik USING btree (kod)",
+          "table": "public.yetkinlik",
+          "columns": [
+            "kod"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "yetkinlik_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (yetkinlik_id)",
+          "table": "public.yetkinlik",
+          "referenced_table": "",
+          "columns": [
+            "yetkinlik_id"
+          ]
+        },
+        {
+          "name": "yetkinlik_kod_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (kod)",
+          "table": "public.yetkinlik",
+          "referenced_table": "",
+          "columns": [
+            "kod"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.calisan",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "calisan_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "sube_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "ad",
+          "type": "varchar(64)",
+          "nullable": false
+        },
+        {
+          "name": "soyad",
+          "type": "varchar(64)",
+          "nullable": false
+        },
+        {
+          "name": "departman",
+          "type": "varchar(10)",
+          "nullable": false
+        },
+        {
+          "name": "eposta",
+          "type": "varchar(254)",
+          "nullable": false
+        },
+        {
+          "name": "kullanici_adi",
+          "type": "varchar(64)",
+          "nullable": false
+        },
+        {
+          "name": "sifre_hash",
+          "type": "varchar(100)",
+          "nullable": false
+        },
+        {
+          "name": "aktif_mi",
+          "type": "boolean",
+          "nullable": false,
+          "default": "true"
+        },
+        {
+          "name": "ise_giris_tarihi",
+          "type": "date",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "calisan_pkey",
+          "def": "CREATE UNIQUE INDEX calisan_pkey ON public.calisan USING btree (calisan_id)",
+          "table": "public.calisan",
+          "columns": [
+            "calisan_id"
+          ]
+        },
+        {
+          "name": "calisan_eposta_key",
+          "def": "CREATE UNIQUE INDEX calisan_eposta_key ON public.calisan USING btree (eposta)",
+          "table": "public.calisan",
+          "columns": [
+            "eposta"
+          ]
+        },
+        {
+          "name": "calisan_kullanici_adi_key",
+          "def": "CREATE UNIQUE INDEX calisan_kullanici_adi_key ON public.calisan USING btree (kullanici_adi)",
+          "table": "public.calisan",
+          "columns": [
+            "kullanici_adi"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "calisan_departman_check",
+          "type": "CHECK",
+          "def": "CHECK (((departman)::text = ANY ((ARRAY['SATIS'::character varying, 'SERVIS'::character varying])::text[])))",
+          "table": "public.calisan",
+          "referenced_table": "",
+          "columns": [
+            "departman"
+          ]
+        },
+        {
+          "name": "calisan_sube_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (sube_id) REFERENCES sube(sube_id)",
+          "table": "public.calisan",
+          "referenced_table": "public.sube",
+          "columns": [
+            "sube_id"
+          ],
+          "referenced_columns": [
+            "sube_id"
+          ]
+        },
+        {
+          "name": "calisan_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (calisan_id)",
+          "table": "public.calisan",
+          "referenced_table": "",
+          "columns": [
+            "calisan_id"
+          ]
+        },
+        {
+          "name": "calisan_eposta_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (eposta)",
+          "table": "public.calisan",
+          "referenced_table": "",
+          "columns": [
+            "eposta"
+          ]
+        },
+        {
+          "name": "calisan_kullanici_adi_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (kullanici_adi)",
+          "table": "public.calisan",
+          "referenced_table": "",
+          "columns": [
+            "kullanici_adi"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.calisan_yetkinlik",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "calisan_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "yetkinlik_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "verilis_tarihi",
+          "type": "date",
+          "nullable": false
+        },
+        {
+          "name": "bitis_tarihi",
+          "type": "date",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "calisan_yetkinlik_pkey",
+          "def": "CREATE UNIQUE INDEX calisan_yetkinlik_pkey ON public.calisan_yetkinlik USING btree (calisan_id, yetkinlik_id)",
+          "table": "public.calisan_yetkinlik",
+          "columns": [
+            "calisan_id",
+            "yetkinlik_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "calisan_yetkinlik_check",
+          "type": "CHECK",
+          "def": "CHECK (((bitis_tarihi IS NULL) OR (bitis_tarihi \u003e= verilis_tarihi)))",
+          "table": "public.calisan_yetkinlik",
+          "referenced_table": "",
+          "columns": [
+            "bitis_tarihi",
+            "verilis_tarihi"
+          ]
+        },
+        {
+          "name": "calisan_yetkinlik_yetkinlik_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (yetkinlik_id) REFERENCES yetkinlik(yetkinlik_id)",
+          "table": "public.calisan_yetkinlik",
+          "referenced_table": "public.yetkinlik",
+          "columns": [
+            "yetkinlik_id"
+          ],
+          "referenced_columns": [
+            "yetkinlik_id"
+          ]
+        },
+        {
+          "name": "calisan_yetkinlik_calisan_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (calisan_id) REFERENCES calisan(calisan_id)",
+          "table": "public.calisan_yetkinlik",
+          "referenced_table": "public.calisan",
+          "columns": [
+            "calisan_id"
+          ],
+          "referenced_columns": [
+            "calisan_id"
+          ]
+        },
+        {
+          "name": "calisan_yetkinlik_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (calisan_id, yetkinlik_id)",
+          "table": "public.calisan_yetkinlik",
+          "referenced_table": "",
+          "columns": [
+            "calisan_id",
+            "yetkinlik_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.model",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "model_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "ad",
+          "type": "varchar(128)",
+          "nullable": false
+        },
+        {
+          "name": "garanti_yil",
+          "type": "smallint",
+          "nullable": false
+        },
+        {
+          "name": "garanti_km",
+          "type": "integer",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "model_pkey",
+          "def": "CREATE UNIQUE INDEX model_pkey ON public.model USING btree (model_id)",
+          "table": "public.model",
+          "columns": [
+            "model_id"
+          ]
+        },
+        {
+          "name": "model_ad_key",
+          "def": "CREATE UNIQUE INDEX model_ad_key ON public.model USING btree (ad)",
+          "table": "public.model",
+          "columns": [
+            "ad"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "model_garanti_km_check",
+          "type": "CHECK",
+          "def": "CHECK ((garanti_km \u003e 0))",
+          "table": "public.model",
+          "referenced_table": "",
+          "columns": [
+            "garanti_km"
+          ]
+        },
+        {
+          "name": "model_garanti_yil_check",
+          "type": "CHECK",
+          "def": "CHECK ((garanti_yil \u003e 0))",
+          "table": "public.model",
+          "referenced_table": "",
+          "columns": [
+            "garanti_yil"
+          ]
+        },
+        {
+          "name": "model_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (model_id)",
+          "table": "public.model",
+          "referenced_table": "",
+          "columns": [
+            "model_id"
+          ]
+        },
+        {
+          "name": "model_ad_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (ad)",
+          "table": "public.model",
+          "referenced_table": "",
+          "columns": [
+            "ad"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.versiyon",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "versiyon_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "model_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "paket_adi",
+          "type": "varchar(128)",
+          "nullable": false
+        },
+        {
+          "name": "model_yili",
+          "type": "smallint",
+          "nullable": false
+        },
+        {
+          "name": "liste_fiyati",
+          "type": "bigint",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "versiyon_pkey",
+          "def": "CREATE UNIQUE INDEX versiyon_pkey ON public.versiyon USING btree (versiyon_id)",
+          "table": "public.versiyon",
+          "columns": [
+            "versiyon_id"
+          ]
+        },
+        {
+          "name": "versiyon_model_id_paket_adi_model_yili_key",
+          "def": "CREATE UNIQUE INDEX versiyon_model_id_paket_adi_model_yili_key ON public.versiyon USING btree (model_id, paket_adi, model_yili)",
+          "table": "public.versiyon",
+          "columns": [
+            "model_id",
+            "paket_adi",
+            "model_yili"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "versiyon_liste_fiyati_check",
+          "type": "CHECK",
+          "def": "CHECK ((liste_fiyati \u003e= 0))",
+          "table": "public.versiyon",
+          "referenced_table": "",
+          "columns": [
+            "liste_fiyati"
+          ]
+        },
+        {
+          "name": "versiyon_model_yili_check",
+          "type": "CHECK",
+          "def": "CHECK ((model_yili \u003e= 1950))",
+          "table": "public.versiyon",
+          "referenced_table": "",
+          "columns": [
+            "model_yili"
+          ]
+        },
+        {
+          "name": "versiyon_model_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (model_id) REFERENCES model(model_id) ON DELETE CASCADE",
+          "table": "public.versiyon",
+          "referenced_table": "public.model",
+          "columns": [
+            "model_id"
+          ],
+          "referenced_columns": [
+            "model_id"
+          ]
+        },
+        {
+          "name": "versiyon_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (versiyon_id)",
+          "table": "public.versiyon",
+          "referenced_table": "",
+          "columns": [
+            "versiyon_id"
+          ]
+        },
+        {
+          "name": "versiyon_model_id_paket_adi_model_yili_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (model_id, paket_adi, model_yili)",
+          "table": "public.versiyon",
+          "referenced_table": "",
+          "columns": [
+            "model_id",
+            "paket_adi",
+            "model_yili"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.versiyon_ozellik",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "versiyon_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "ozellik_adi",
+          "type": "varchar(64)",
+          "nullable": false
+        },
+        {
+          "name": "deger",
+          "type": "varchar(128)",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "versiyon_ozellik_pkey",
+          "def": "CREATE UNIQUE INDEX versiyon_ozellik_pkey ON public.versiyon_ozellik USING btree (versiyon_id, ozellik_adi)",
+          "table": "public.versiyon_ozellik",
+          "columns": [
+            "versiyon_id",
+            "ozellik_adi"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "versiyon_ozellik_versiyon_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (versiyon_id) REFERENCES versiyon(versiyon_id) ON DELETE CASCADE",
+          "table": "public.versiyon_ozellik",
+          "referenced_table": "public.versiyon",
+          "columns": [
+            "versiyon_id"
+          ],
+          "referenced_columns": [
+            "versiyon_id"
+          ]
+        },
+        {
+          "name": "versiyon_ozellik_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (versiyon_id, ozellik_adi)",
+          "table": "public.versiyon_ozellik",
+          "referenced_table": "",
+          "columns": [
+            "versiyon_id",
+            "ozellik_adi"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.musteri",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "musteri_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "telefon",
+          "type": "varchar(20)",
+          "nullable": false
+        },
+        {
+          "name": "ad",
+          "type": "varchar(64)",
+          "nullable": false
+        },
+        {
+          "name": "soyad",
+          "type": "varchar(64)",
+          "nullable": false
+        },
+        {
+          "name": "kayit_zamani",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "musteri_pkey",
+          "def": "CREATE UNIQUE INDEX musteri_pkey ON public.musteri USING btree (musteri_id)",
+          "table": "public.musteri",
+          "columns": [
+            "musteri_id"
+          ]
+        },
+        {
+          "name": "musteri_telefon_key",
+          "def": "CREATE UNIQUE INDEX musteri_telefon_key ON public.musteri USING btree (telefon)",
+          "table": "public.musteri",
+          "columns": [
+            "telefon"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "musteri_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (musteri_id)",
+          "table": "public.musteri",
+          "referenced_table": "",
+          "columns": [
+            "musteri_id"
+          ]
+        },
+        {
+          "name": "musteri_telefon_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (telefon)",
+          "table": "public.musteri",
+          "referenced_table": "",
+          "columns": [
+            "telefon"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.mesaj",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "mesaj_id",
+          "type": "bigint",
+          "nullable": false
+        },
+        {
+          "name": "musteri_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "yon",
+          "type": "varchar(6)",
+          "nullable": false
+        },
+        {
+          "name": "zaman",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "icerik",
+          "type": "text",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "mesaj_pkey",
+          "def": "CREATE UNIQUE INDEX mesaj_pkey ON public.mesaj USING btree (mesaj_id)",
+          "table": "public.mesaj",
+          "columns": [
+            "mesaj_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "mesaj_yon_check",
+          "type": "CHECK",
+          "def": "CHECK (((yon)::text = ANY ((ARRAY['GELEN'::character varying, 'GIDEN'::character varying])::text[])))",
+          "table": "public.mesaj",
+          "referenced_table": "",
+          "columns": [
+            "yon"
+          ]
+        },
+        {
+          "name": "mesaj_musteri_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (musteri_id) REFERENCES musteri(musteri_id)",
+          "table": "public.mesaj",
+          "referenced_table": "public.musteri",
+          "columns": [
+            "musteri_id"
+          ],
+          "referenced_columns": [
+            "musteri_id"
+          ]
+        },
+        {
+          "name": "mesaj_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (mesaj_id)",
+          "table": "public.mesaj",
+          "referenced_table": "",
+          "columns": [
+            "mesaj_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.arac",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "vin",
+          "type": "varchar(17)",
+          "nullable": false
+        },
+        {
+          "name": "versiyon_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "sube_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "renk",
+          "type": "varchar(32)",
+          "nullable": false
+        },
+        {
+          "name": "plaka",
+          "type": "varchar(16)",
+          "nullable": true
+        },
+        {
+          "name": "durum",
+          "type": "varchar(10)",
+          "nullable": false
+        },
+        {
+          "name": "tahmini_varis_tarihi",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "musteri_id",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "arac_pkey",
+          "def": "CREATE UNIQUE INDEX arac_pkey ON public.arac USING btree (vin)",
+          "table": "public.arac",
+          "columns": [
+            "vin"
+          ]
+        },
+        {
+          "name": "arac_plaka_key",
+          "def": "CREATE UNIQUE INDEX arac_plaka_key ON public.arac USING btree (plaka)",
+          "table": "public.arac",
+          "columns": [
+            "plaka"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "arac_check",
+          "type": "CHECK",
+          "def": "CHECK ((((durum)::text = 'YOLDA'::text) = (tahmini_varis_tarihi IS NOT NULL)))",
+          "table": "public.arac",
+          "referenced_table": "",
+          "columns": [
+            "durum",
+            "tahmini_varis_tarihi"
+          ]
+        },
+        {
+          "name": "arac_check1",
+          "type": "CHECK",
+          "def": "CHECK ((((durum)::text = 'SATILDI'::text) = (musteri_id IS NOT NULL)))",
+          "table": "public.arac",
+          "referenced_table": "",
+          "columns": [
+            "durum",
+            "musteri_id"
+          ]
+        },
+        {
+          "name": "arac_check2",
+          "type": "CHECK",
+          "def": "CHECK ((((durum)::text \u003c\u003e 'SATILDI'::text) OR (plaka IS NOT NULL)))",
+          "table": "public.arac",
+          "referenced_table": "",
+          "columns": [
+            "durum",
+            "plaka"
+          ]
+        },
+        {
+          "name": "arac_durum_check",
+          "type": "CHECK",
+          "def": "CHECK (((durum)::text = ANY ((ARRAY['YOLDA'::character varying, 'STOKTA'::character varying, 'SATILDI'::character varying])::text[])))",
+          "table": "public.arac",
+          "referenced_table": "",
+          "columns": [
+            "durum"
+          ]
+        },
+        {
+          "name": "arac_vin_check",
+          "type": "CHECK",
+          "def": "CHECK ((char_length((vin)::text) = 17))",
+          "table": "public.arac",
+          "referenced_table": "",
+          "columns": [
+            "vin"
+          ]
+        },
+        {
+          "name": "arac_sube_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (sube_id) REFERENCES sube(sube_id)",
+          "table": "public.arac",
+          "referenced_table": "public.sube",
+          "columns": [
+            "sube_id"
+          ],
+          "referenced_columns": [
+            "sube_id"
+          ]
+        },
+        {
+          "name": "arac_versiyon_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (versiyon_id) REFERENCES versiyon(versiyon_id)",
+          "table": "public.arac",
+          "referenced_table": "public.versiyon",
+          "columns": [
+            "versiyon_id"
+          ],
+          "referenced_columns": [
+            "versiyon_id"
+          ]
+        },
+        {
+          "name": "arac_musteri_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (musteri_id) REFERENCES musteri(musteri_id)",
+          "table": "public.arac",
+          "referenced_table": "public.musteri",
+          "columns": [
+            "musteri_id"
+          ],
+          "referenced_columns": [
+            "musteri_id"
+          ]
+        },
+        {
+          "name": "arac_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (vin)",
+          "table": "public.arac",
+          "referenced_table": "",
+          "columns": [
+            "vin"
+          ]
+        },
+        {
+          "name": "arac_plaka_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (plaka)",
+          "table": "public.arac",
+          "referenced_table": "",
+          "columns": [
+            "plaka"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.stok_hareketi",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "hareket_id",
+          "type": "bigint",
+          "nullable": false
+        },
+        {
+          "name": "arac_vin",
+          "type": "varchar(17)",
+          "nullable": false
+        },
+        {
+          "name": "hareket_turu",
+          "type": "varchar(10)",
+          "nullable": false
+        },
+        {
+          "name": "zaman",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "kaynak_sube_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "hedef_sube_id",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "stok_hareketi_pkey",
+          "def": "CREATE UNIQUE INDEX stok_hareketi_pkey ON public.stok_hareketi USING btree (hareket_id)",
+          "table": "public.stok_hareketi",
+          "columns": [
+            "hareket_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "stok_hareketi_check",
+          "type": "CHECK",
+          "def": "CHECK ((((hareket_turu)::text \u003c\u003e 'TRANSFER'::text) OR ((kaynak_sube_id IS NOT NULL) AND (hedef_sube_id IS NOT NULL) AND (kaynak_sube_id \u003c\u003e hedef_sube_id))))",
+          "table": "public.stok_hareketi",
+          "referenced_table": "",
+          "columns": [
+            "hareket_turu",
+            "kaynak_sube_id",
+            "hedef_sube_id"
+          ]
+        },
+        {
+          "name": "stok_hareketi_check1",
+          "type": "CHECK",
+          "def": "CHECK ((((hareket_turu)::text \u003c\u003e ALL ((ARRAY['SIPARIS'::character varying, 'GELIS'::character varying])::text[])) OR ((kaynak_sube_id IS NULL) AND (hedef_sube_id IS NOT NULL))))",
+          "table": "public.stok_hareketi",
+          "referenced_table": "",
+          "columns": [
+            "hareket_turu",
+            "kaynak_sube_id",
+            "hedef_sube_id"
+          ]
+        },
+        {
+          "name": "stok_hareketi_check2",
+          "type": "CHECK",
+          "def": "CHECK ((((hareket_turu)::text \u003c\u003e 'SATIS'::text) OR ((kaynak_sube_id IS NOT NULL) AND (hedef_sube_id IS NULL))))",
+          "table": "public.stok_hareketi",
+          "referenced_table": "",
+          "columns": [
+            "hareket_turu",
+            "kaynak_sube_id",
+            "hedef_sube_id"
+          ]
+        },
+        {
+          "name": "stok_hareketi_hareket_turu_check",
+          "type": "CHECK",
+          "def": "CHECK (((hareket_turu)::text = ANY ((ARRAY['SIPARIS'::character varying, 'GELIS'::character varying, 'TRANSFER'::character varying, 'SATIS'::character varying])::text[])))",
+          "table": "public.stok_hareketi",
+          "referenced_table": "",
+          "columns": [
+            "hareket_turu"
+          ]
+        },
+        {
+          "name": "stok_hareketi_hedef_sube_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (hedef_sube_id) REFERENCES sube(sube_id)",
+          "table": "public.stok_hareketi",
+          "referenced_table": "public.sube",
+          "columns": [
+            "hedef_sube_id"
+          ],
+          "referenced_columns": [
+            "sube_id"
+          ]
+        },
+        {
+          "name": "stok_hareketi_kaynak_sube_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (kaynak_sube_id) REFERENCES sube(sube_id)",
+          "table": "public.stok_hareketi",
+          "referenced_table": "public.sube",
+          "columns": [
+            "kaynak_sube_id"
+          ],
+          "referenced_columns": [
+            "sube_id"
+          ]
+        },
+        {
+          "name": "stok_hareketi_arac_vin_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (arac_vin) REFERENCES arac(vin)",
+          "table": "public.stok_hareketi",
+          "referenced_table": "public.arac",
+          "columns": [
+            "arac_vin"
+          ],
+          "referenced_columns": [
+            "vin"
+          ]
+        },
+        {
+          "name": "stok_hareketi_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (hareket_id)",
+          "table": "public.stok_hareketi",
+          "referenced_table": "",
+          "columns": [
+            "hareket_id"
+          ]
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "table": "public.calisan",
+      "columns": [
+        "sube_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.sube",
+      "parent_columns": [
+        "sube_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (sube_id) REFERENCES sube(sube_id)"
+    },
+    {
+      "table": "public.calisan_yetkinlik",
+      "columns": [
+        "yetkinlik_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.yetkinlik",
+      "parent_columns": [
+        "yetkinlik_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (yetkinlik_id) REFERENCES yetkinlik(yetkinlik_id)"
+    },
+    {
+      "table": "public.calisan_yetkinlik",
+      "columns": [
+        "calisan_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.calisan",
+      "parent_columns": [
+        "calisan_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (calisan_id) REFERENCES calisan(calisan_id)"
+    },
+    {
+      "table": "public.versiyon",
+      "columns": [
+        "model_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.model",
+      "parent_columns": [
+        "model_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (model_id) REFERENCES model(model_id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.versiyon_ozellik",
+      "columns": [
+        "versiyon_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.versiyon",
+      "parent_columns": [
+        "versiyon_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (versiyon_id) REFERENCES versiyon(versiyon_id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.mesaj",
+      "columns": [
+        "musteri_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.musteri",
+      "parent_columns": [
+        "musteri_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (musteri_id) REFERENCES musteri(musteri_id)"
+    },
+    {
+      "table": "public.arac",
+      "columns": [
+        "sube_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.sube",
+      "parent_columns": [
+        "sube_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (sube_id) REFERENCES sube(sube_id)"
+    },
+    {
+      "table": "public.arac",
+      "columns": [
+        "versiyon_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.versiyon",
+      "parent_columns": [
+        "versiyon_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (versiyon_id) REFERENCES versiyon(versiyon_id)"
+    },
+    {
+      "table": "public.arac",
+      "columns": [
+        "musteri_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.musteri",
+      "parent_columns": [
+        "musteri_id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (musteri_id) REFERENCES musteri(musteri_id)"
+    },
+    {
+      "table": "public.stok_hareketi",
+      "columns": [
+        "hedef_sube_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.sube",
+      "parent_columns": [
+        "sube_id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (hedef_sube_id) REFERENCES sube(sube_id)"
+    },
+    {
+      "table": "public.stok_hareketi",
+      "columns": [
+        "kaynak_sube_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.sube",
+      "parent_columns": [
+        "sube_id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (kaynak_sube_id) REFERENCES sube(sube_id)"
+    },
+    {
+      "table": "public.stok_hareketi",
+      "columns": [
+        "arac_vin"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.arac",
+      "parent_columns": [
+        "vin"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (arac_vin) REFERENCES arac(vin)"
+    }
+  ],
+  "driver": {
+    "name": "postgres",
+    "database_version": "PostgreSQL 17.11 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",
+    "meta": {
+      "current_schema": "public",
+      "search_paths": [
+        "postgres",
+        "public"
+      ],
+      "dict": {
+        "Functions": "Stored procedures and functions"
+      }
+    }
+  }
+}
