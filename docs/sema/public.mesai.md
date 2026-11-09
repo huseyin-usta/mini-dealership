@@ -4,7 +4,7 @@
 
 | Name | Type | Default | Nullable | Children | Parents | Comment |
 | ---- | ---- | ------- | -------- | -------- | ------- | ------- |
-| gun | smallint |  | false |  |  |  |
+| gun | smallint |  | false | [public.tur_saat](public.tur_saat.md) |  |  |
 | acilis | time without time zone |  | false |  |  |  |
 | kapanis | time without time zone |  | false |  |  |  |
 

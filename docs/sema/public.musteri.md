@@ -4,7 +4,7 @@
 
 | Name | Type | Default | Nullable | Children | Parents | Comment |
 | ---- | ---- | ------- | -------- | -------- | ------- | ------- |
-| musteri_id | integer |  | false | [public.mesaj](public.mesaj.md) [public.arac](public.arac.md) |  |  |
+| musteri_id | integer |  | false | [public.mesaj](public.mesaj.md) [public.arac](public.arac.md) [public.randevu](public.randevu.md) |  |  |
 | telefon | varchar(20) |  | false |  |  |  |
 | ad | varchar(64) |  | false |  |  |  |
 | soyad | varchar(64) |  | false |  |  |  |

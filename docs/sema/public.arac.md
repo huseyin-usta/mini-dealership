@@ -4,7 +4,7 @@
 
 | Name | Type | Default | Nullable | Children | Parents | Comment |
 | ---- | ---- | ------- | -------- | -------- | ------- | ------- |
-| vin | varchar(17) |  | false | [public.stok_hareketi](public.stok_hareketi.md) |  |  |
+| vin | varchar(17) |  | false | [public.stok_hareketi](public.stok_hareketi.md) [public.randevu](public.randevu.md) |  |  |
 | versiyon_id | integer |  | false |  | [public.versiyon](public.versiyon.md) |  |
 | sube_id | integer |  | false |  | [public.sube](public.sube.md) |  |
 | renk | varchar(32) |  | false |  |  |  |

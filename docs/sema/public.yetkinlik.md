@@ -4,7 +4,7 @@
 
 | Name | Type | Default | Nullable | Children | Parents | Comment |
 | ---- | ---- | ------- | -------- | -------- | ------- | ------- |
-| yetkinlik_id | integer |  | false | [public.calisan_yetkinlik](public.calisan_yetkinlik.md) |  |  |
+| yetkinlik_id | integer |  | false | [public.calisan_yetkinlik](public.calisan_yetkinlik.md) [public.randevu_turu](public.randevu_turu.md) |  |  |
 | kod | varchar(32) |  | false |  |  |  |
 | ad | varchar(128) |  | false |  |  |  |
 

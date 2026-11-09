@@ -4,7 +4,7 @@
 
 | Name | Type | Default | Nullable | Children | Parents | Comment |
 | ---- | ---- | ------- | -------- | -------- | ------- | ------- |
-| sube_id | integer |  | false | [public.calisan](public.calisan.md) [public.arac](public.arac.md) [public.stok_hareketi](public.stok_hareketi.md) |  |  |
+| sube_id | integer |  | false | [public.calisan](public.calisan.md) [public.arac](public.arac.md) [public.stok_hareketi](public.stok_hareketi.md) [public.randevu](public.randevu.md) |  |  |
 | sehir | varchar(64) |  | false |  |  |  |
 | ad | varchar(128) |  | false |  |  |  |
 

@@ -57,7 +57,8 @@ sunucusu), **panel arayüzü** ve **PostgreSQL veritabanı**. Hedef: tek komutla
   süresi (yıl ve km) de modele göre değişir
 - Aracın durum değişiklikleri (geliş, satış, şubeler arası transfer) stok
   hareketi olarak kaydedilir
-- Bizden alınmamış bir araç servise ilk geldiğinde VIN ve plakasıyla kaydedilir
+- Markanın bütün araçları bayi ağı üzerinden satıldığı için servise gelen her
+  araç sistemde kayıtlıdır (ara raporda netleşen karar)
 - Müşteriyi telefon numarası tanımlıyor; bota gelen ve giden her mesaj
   kaydedilir
 
@@ -218,10 +219,11 @@ Rehberin özellikle istediği ve projede göstereceğimiz şeyler:
 
 ## Durum ve takvim
 
-- **Hazır olan:** başka bir projede çalışan WhatsApp bot altyapısı (Baileys +
-  Gemini) ve bu dokümandaki domain ve iş kuralları
-- **Yapılacak:** EER ve şema, 250.000 satırlık veri üretimi, sorgular ve indeks
-  analizi, Java backend, panel
+- **Hazır olan:** EER ve ilişkisel şema tamamlandı, 20/20 DDL tablosu PostgreSQL
+  üzerinde doğrulandı; başka bir projede çalışan WhatsApp bot altyapısı
+  (Baileys + Gemini) ve bu dokümandaki domain ve iş kuralları
+- **Yapılacak:** Roller/RLS, trigger'lar, 250.000 satırlık veri üretimi, sorgular
+  ve indeks analizi, Java backend, panel
 - **Takvim:** ara rapor 19 Ekim 2026, son rapor 3 Aralık 2026, dönem sonunda
   demo
 - **Ekip:** rehbere göre 2–3 kişi; herkes tasarımdan koda her aşamada görev

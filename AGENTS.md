@@ -11,19 +11,17 @@ session'lara ve ekip arkadaşına bağlam aktarımı içindir.
 3. `mini-dealership.md` — spec; PDF'lerle uyumlu tutulur (ör. mesai kuralı PDF'e
    göre düzeltildi). Değiştirmeden önce kullanıcıya sor.
 
-## Durum (31 Ekim 2026 itibarıyla)
+## Durum (9 Kasım 2026 itibarıyla)
 
 - GitHub reposu: **github.com/huseyin-usta/mini-dealership** (public, `main`).
   Commit yazarı: `h.usta@etu.edu.tr` (gt-arc maili KULLANILMAZ).
   Collaborator: `aslyagm` (Şevda Yağmur ASAL, write yetkisi).
-- İlerleme: `db/` altında **12/20 tablo DDL tamam** (sube, mesai, yetkinlik,
-  calisan, calisan_yetkinlik, model, versiyon, versiyon_ozellik, musteri, mesaj,
-  arac, stok_hareketi).
-- Kalan DDL: `randevu_turu`, `tur_saat`, `randevu` (EXCLUDE çakışma kısıtı),
-  `servis_kaydi`, `servis_durum_gecmisi`, `servis_islem`, `sigorta_sirketi`,
-  `servis_sigorta` → ardından roller + GRANT/REVOKE, garanti trigger, view'lar.
+- İlerleme: `db/` altında **20/20 tablo DDL tamamlandı** (temel şema, randevu
+  ve servis blokları eksiksiz).
+- Kalan işler: Roller + GRANT/REVOKE, randevu ve servis doğrulama trigger'ları
+  (özellikle garanti ve ödeme kaynağı kuralı), rapor ve maskeli view'lar.
 - Şema görselleştirme: `scripts/sema-diyagram.sh` (tbls + geçici Docker Postgres)
-  → `docs/sema/` çıktısı repoda takip edilir. DDL değişince script'i yeniden çalıştır.
+  → `docs/sema/` çıktısı 20 tablo için güncellendi.
 - Takvim: son rapor **3 Aralık 2026**, dönem sonunda demo.
 - Görev dağılımı: spec'in "Görev dağılımı" bölümünde.
 

@@ -4,7 +4,7 @@
 
 | Name | Type | Default | Nullable | Children | Parents | Comment |
 | ---- | ---- | ------- | -------- | -------- | ------- | ------- |
-| versiyon_id | integer |  | false | [public.versiyon_ozellik](public.versiyon_ozellik.md) [public.arac](public.arac.md) |  |  |
+| versiyon_id | integer |  | false | [public.versiyon_ozellik](public.versiyon_ozellik.md) [public.arac](public.arac.md) [public.randevu](public.randevu.md) |  |  |
 | model_id | integer |  | false |  | [public.model](public.model.md) |  |
 | paket_adi | varchar(128) |  | false |  |  |  |
 | model_yili | smallint |  | false |  |  |  |

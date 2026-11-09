@@ -4,7 +4,7 @@
 
 | Name | Type | Default | Nullable | Children | Parents | Comment |
 | ---- | ---- | ------- | -------- | -------- | ------- | ------- |
-| calisan_id | integer |  | false | [public.calisan_yetkinlik](public.calisan_yetkinlik.md) |  |  |
+| calisan_id | integer |  | false | [public.calisan_yetkinlik](public.calisan_yetkinlik.md) [public.randevu](public.randevu.md) [public.servis_kaydi](public.servis_kaydi.md) |  |  |
 | sube_id | integer |  | false |  | [public.sube](public.sube.md) |  |
 | ad | varchar(64) |  | false |  |  |  |
 | soyad | varchar(64) |  | false |  |  |  |

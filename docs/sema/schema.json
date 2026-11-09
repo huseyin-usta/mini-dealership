@@ -1136,6 +1136,1001 @@
           ]
         }
       ]
+    },
+    {
+      "name": "public.randevu_turu",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "tur_kodu",
+          "type": "varchar(32)",
+          "nullable": false
+        },
+        {
+          "name": "ad",
+          "type": "varchar(64)",
+          "nullable": false
+        },
+        {
+          "name": "sure_dakika",
+          "type": "smallint",
+          "nullable": false
+        },
+        {
+          "name": "departman",
+          "type": "varchar(10)",
+          "nullable": false
+        },
+        {
+          "name": "yetkinlik_id",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "randevu_turu_pkey",
+          "def": "CREATE UNIQUE INDEX randevu_turu_pkey ON public.randevu_turu USING btree (tur_kodu)",
+          "table": "public.randevu_turu",
+          "columns": [
+            "tur_kodu"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "randevu_turu_departman_check",
+          "type": "CHECK",
+          "def": "CHECK (((departman)::text = ANY ((ARRAY['SATIS'::character varying, 'SERVIS'::character varying])::text[])))",
+          "table": "public.randevu_turu",
+          "referenced_table": "",
+          "columns": [
+            "departman"
+          ]
+        },
+        {
+          "name": "randevu_turu_sure_dakika_check",
+          "type": "CHECK",
+          "def": "CHECK ((sure_dakika \u003e 0))",
+          "table": "public.randevu_turu",
+          "referenced_table": "",
+          "columns": [
+            "sure_dakika"
+          ]
+        },
+        {
+          "name": "randevu_turu_yetkinlik_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (yetkinlik_id) REFERENCES yetkinlik(yetkinlik_id)",
+          "table": "public.randevu_turu",
+          "referenced_table": "public.yetkinlik",
+          "columns": [
+            "yetkinlik_id"
+          ],
+          "referenced_columns": [
+            "yetkinlik_id"
+          ]
+        },
+        {
+          "name": "randevu_turu_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (tur_kodu)",
+          "table": "public.randevu_turu",
+          "referenced_table": "",
+          "columns": [
+            "tur_kodu"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.tur_saat",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "tur_kodu",
+          "type": "varchar(32)",
+          "nullable": false
+        },
+        {
+          "name": "gun",
+          "type": "smallint",
+          "nullable": false
+        },
+        {
+          "name": "baslangic",
+          "type": "time without time zone",
+          "nullable": false
+        },
+        {
+          "name": "bitis",
+          "type": "time without time zone",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "tur_saat_pkey",
+          "def": "CREATE UNIQUE INDEX tur_saat_pkey ON public.tur_saat USING btree (tur_kodu, gun, baslangic)",
+          "table": "public.tur_saat",
+          "columns": [
+            "tur_kodu",
+            "gun",
+            "baslangic"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "tur_saat_check",
+          "type": "CHECK",
+          "def": "CHECK ((baslangic \u003c bitis))",
+          "table": "public.tur_saat",
+          "referenced_table": "",
+          "columns": [
+            "baslangic",
+            "bitis"
+          ]
+        },
+        {
+          "name": "tur_saat_gun_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (gun) REFERENCES mesai(gun)",
+          "table": "public.tur_saat",
+          "referenced_table": "public.mesai",
+          "columns": [
+            "gun"
+          ],
+          "referenced_columns": [
+            "gun"
+          ]
+        },
+        {
+          "name": "tur_saat_tur_kodu_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (tur_kodu) REFERENCES randevu_turu(tur_kodu) ON DELETE CASCADE",
+          "table": "public.tur_saat",
+          "referenced_table": "public.randevu_turu",
+          "columns": [
+            "tur_kodu"
+          ],
+          "referenced_columns": [
+            "tur_kodu"
+          ]
+        },
+        {
+          "name": "tur_saat_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (tur_kodu, gun, baslangic)",
+          "table": "public.tur_saat",
+          "referenced_table": "",
+          "columns": [
+            "tur_kodu",
+            "gun",
+            "baslangic"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.randevu",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "randevu_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "musteri_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "sube_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "tur_kodu",
+          "type": "varchar(32)",
+          "nullable": false
+        },
+        {
+          "name": "calisan_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "arac_vin",
+          "type": "varchar(17)",
+          "nullable": true
+        },
+        {
+          "name": "versiyon_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "baslangic",
+          "type": "timestamp without time zone",
+          "nullable": false
+        },
+        {
+          "name": "bitis",
+          "type": "timestamp without time zone",
+          "nullable": false
+        },
+        {
+          "name": "durum",
+          "type": "varchar(16)",
+          "nullable": false,
+          "default": "'PLANLANDI'::character varying"
+        },
+        {
+          "name": "kaynak",
+          "type": "varchar(10)",
+          "nullable": false
+        },
+        {
+          "name": "notlar",
+          "type": "text",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "randevu_pkey",
+          "def": "CREATE UNIQUE INDEX randevu_pkey ON public.randevu USING btree (randevu_id)",
+          "table": "public.randevu",
+          "columns": [
+            "randevu_id"
+          ]
+        },
+        {
+          "name": "randevu_calisan_id_tsrange_excl",
+          "def": "CREATE INDEX randevu_calisan_id_tsrange_excl ON public.randevu USING gist (calisan_id, tsrange(baslangic, bitis)) WHERE ((durum)::text \u003c\u003e 'IPTAL'::text)",
+          "table": "public.randevu",
+          "columns": [
+            "calisan_id",
+            "tsrange"
+          ]
+        },
+        {
+          "name": "randevu_arac_vin_tsrange_excl",
+          "def": "CREATE INDEX randevu_arac_vin_tsrange_excl ON public.randevu USING gist (arac_vin, tsrange(baslangic, bitis)) WHERE ((arac_vin IS NOT NULL) AND ((durum)::text \u003c\u003e 'IPTAL'::text))",
+          "table": "public.randevu",
+          "columns": [
+            "arac_vin",
+            "tsrange"
+          ]
+        },
+        {
+          "name": "randevu_musteri_id_tsrange_excl",
+          "def": "CREATE INDEX randevu_musteri_id_tsrange_excl ON public.randevu USING gist (musteri_id, tsrange(baslangic, bitis)) WHERE ((durum)::text \u003c\u003e 'IPTAL'::text)",
+          "table": "public.randevu",
+          "columns": [
+            "musteri_id",
+            "tsrange"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "randevu_check",
+          "type": "CHECK",
+          "def": "CHECK ((baslangic \u003c bitis))",
+          "table": "public.randevu",
+          "referenced_table": "",
+          "columns": [
+            "baslangic",
+            "bitis"
+          ]
+        },
+        {
+          "name": "randevu_check1",
+          "type": "CHECK",
+          "def": "CHECK ((((tur_kodu)::text \u003c\u003e ALL ((ARRAY['TEST_SURUSU'::character varying, 'TESLIMAT'::character varying, 'PERIYODIK_BAKIM'::character varying, 'SERVIS_GIRIS'::character varying, 'SERVIS_TESLIM'::character varying])::text[])) OR (arac_vin IS NOT NULL)))",
+          "table": "public.randevu",
+          "referenced_table": "",
+          "columns": [
+            "tur_kodu",
+            "arac_vin"
+          ]
+        },
+        {
+          "name": "randevu_durum_check",
+          "type": "CHECK",
+          "def": "CHECK (((durum)::text = ANY ((ARRAY['PLANLANDI'::character varying, 'TAMAMLANDI'::character varying, 'IPTAL'::character varying, 'GELMEDI'::character varying])::text[])))",
+          "table": "public.randevu",
+          "referenced_table": "",
+          "columns": [
+            "durum"
+          ]
+        },
+        {
+          "name": "randevu_kaynak_check",
+          "type": "CHECK",
+          "def": "CHECK (((kaynak)::text = ANY ((ARRAY['WHATSAPP'::character varying, 'PANEL'::character varying])::text[])))",
+          "table": "public.randevu",
+          "referenced_table": "",
+          "columns": [
+            "kaynak"
+          ]
+        },
+        {
+          "name": "randevu_sube_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (sube_id) REFERENCES sube(sube_id)",
+          "table": "public.randevu",
+          "referenced_table": "public.sube",
+          "columns": [
+            "sube_id"
+          ],
+          "referenced_columns": [
+            "sube_id"
+          ]
+        },
+        {
+          "name": "randevu_calisan_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (calisan_id) REFERENCES calisan(calisan_id)",
+          "table": "public.randevu",
+          "referenced_table": "public.calisan",
+          "columns": [
+            "calisan_id"
+          ],
+          "referenced_columns": [
+            "calisan_id"
+          ]
+        },
+        {
+          "name": "randevu_versiyon_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (versiyon_id) REFERENCES versiyon(versiyon_id)",
+          "table": "public.randevu",
+          "referenced_table": "public.versiyon",
+          "columns": [
+            "versiyon_id"
+          ],
+          "referenced_columns": [
+            "versiyon_id"
+          ]
+        },
+        {
+          "name": "randevu_musteri_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (musteri_id) REFERENCES musteri(musteri_id) ON DELETE RESTRICT",
+          "table": "public.randevu",
+          "referenced_table": "public.musteri",
+          "columns": [
+            "musteri_id"
+          ],
+          "referenced_columns": [
+            "musteri_id"
+          ]
+        },
+        {
+          "name": "randevu_arac_vin_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (arac_vin) REFERENCES arac(vin)",
+          "table": "public.randevu",
+          "referenced_table": "public.arac",
+          "columns": [
+            "arac_vin"
+          ],
+          "referenced_columns": [
+            "vin"
+          ]
+        },
+        {
+          "name": "randevu_tur_kodu_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (tur_kodu) REFERENCES randevu_turu(tur_kodu)",
+          "table": "public.randevu",
+          "referenced_table": "public.randevu_turu",
+          "columns": [
+            "tur_kodu"
+          ],
+          "referenced_columns": [
+            "tur_kodu"
+          ]
+        },
+        {
+          "name": "randevu_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (randevu_id)",
+          "table": "public.randevu",
+          "referenced_table": "",
+          "columns": [
+            "randevu_id"
+          ]
+        },
+        {
+          "name": "randevu_calisan_id_tsrange_excl",
+          "type": "x",
+          "def": "EXCLUDE USING gist (calisan_id WITH =, tsrange(baslangic, bitis) WITH \u0026\u0026) WHERE (((durum)::text \u003c\u003e 'IPTAL'::text))",
+          "table": "public.randevu",
+          "referenced_table": "",
+          "columns": [
+            "calisan_id"
+          ]
+        },
+        {
+          "name": "randevu_arac_vin_tsrange_excl",
+          "type": "x",
+          "def": "EXCLUDE USING gist (arac_vin WITH =, tsrange(baslangic, bitis) WITH \u0026\u0026) WHERE (((arac_vin IS NOT NULL) AND ((durum)::text \u003c\u003e 'IPTAL'::text)))",
+          "table": "public.randevu",
+          "referenced_table": "",
+          "columns": [
+            "arac_vin"
+          ]
+        },
+        {
+          "name": "randevu_musteri_id_tsrange_excl",
+          "type": "x",
+          "def": "EXCLUDE USING gist (musteri_id WITH =, tsrange(baslangic, bitis) WITH \u0026\u0026) WHERE (((durum)::text \u003c\u003e 'IPTAL'::text))",
+          "table": "public.randevu",
+          "referenced_table": "",
+          "columns": [
+            "musteri_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.servis_kaydi",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "servis_kaydi_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "acilis_randevu_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "teslim_randevu_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "sorumlu_calisan_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "sebep",
+          "type": "varchar(10)",
+          "nullable": false
+        },
+        {
+          "name": "giris_kilometresi",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "cikis_kilometresi",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "tahmini_teslim_tarihi",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "sikayet_aciklama",
+          "type": "text",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "servis_kaydi_pkey",
+          "def": "CREATE UNIQUE INDEX servis_kaydi_pkey ON public.servis_kaydi USING btree (servis_kaydi_id)",
+          "table": "public.servis_kaydi",
+          "columns": [
+            "servis_kaydi_id"
+          ]
+        },
+        {
+          "name": "servis_kaydi_acilis_randevu_id_key",
+          "def": "CREATE UNIQUE INDEX servis_kaydi_acilis_randevu_id_key ON public.servis_kaydi USING btree (acilis_randevu_id)",
+          "table": "public.servis_kaydi",
+          "columns": [
+            "acilis_randevu_id"
+          ]
+        },
+        {
+          "name": "servis_kaydi_teslim_randevu_id_key",
+          "def": "CREATE UNIQUE INDEX servis_kaydi_teslim_randevu_id_key ON public.servis_kaydi USING btree (teslim_randevu_id)",
+          "table": "public.servis_kaydi",
+          "columns": [
+            "teslim_randevu_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "servis_kaydi_check",
+          "type": "CHECK",
+          "def": "CHECK (((teslim_randevu_id IS NULL) OR (teslim_randevu_id \u003c\u003e acilis_randevu_id)))",
+          "table": "public.servis_kaydi",
+          "referenced_table": "",
+          "columns": [
+            "teslim_randevu_id",
+            "acilis_randevu_id"
+          ]
+        },
+        {
+          "name": "servis_kaydi_check1",
+          "type": "CHECK",
+          "def": "CHECK (((cikis_kilometresi IS NULL) OR (cikis_kilometresi \u003e= giris_kilometresi)))",
+          "table": "public.servis_kaydi",
+          "referenced_table": "",
+          "columns": [
+            "cikis_kilometresi",
+            "giris_kilometresi"
+          ]
+        },
+        {
+          "name": "servis_kaydi_giris_kilometresi_check",
+          "type": "CHECK",
+          "def": "CHECK ((giris_kilometresi \u003e= 0))",
+          "table": "public.servis_kaydi",
+          "referenced_table": "",
+          "columns": [
+            "giris_kilometresi"
+          ]
+        },
+        {
+          "name": "servis_kaydi_sebep_check",
+          "type": "CHECK",
+          "def": "CHECK (((sebep)::text = ANY ((ARRAY['BAKIM'::character varying, 'ARIZA'::character varying, 'KAZA'::character varying])::text[])))",
+          "table": "public.servis_kaydi",
+          "referenced_table": "",
+          "columns": [
+            "sebep"
+          ]
+        },
+        {
+          "name": "servis_kaydi_sorumlu_calisan_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (sorumlu_calisan_id) REFERENCES calisan(calisan_id)",
+          "table": "public.servis_kaydi",
+          "referenced_table": "public.calisan",
+          "columns": [
+            "sorumlu_calisan_id"
+          ],
+          "referenced_columns": [
+            "calisan_id"
+          ]
+        },
+        {
+          "name": "servis_kaydi_acilis_randevu_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (acilis_randevu_id) REFERENCES randevu(randevu_id)",
+          "table": "public.servis_kaydi",
+          "referenced_table": "public.randevu",
+          "columns": [
+            "acilis_randevu_id"
+          ],
+          "referenced_columns": [
+            "randevu_id"
+          ]
+        },
+        {
+          "name": "servis_kaydi_teslim_randevu_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (teslim_randevu_id) REFERENCES randevu(randevu_id)",
+          "table": "public.servis_kaydi",
+          "referenced_table": "public.randevu",
+          "columns": [
+            "teslim_randevu_id"
+          ],
+          "referenced_columns": [
+            "randevu_id"
+          ]
+        },
+        {
+          "name": "servis_kaydi_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (servis_kaydi_id)",
+          "table": "public.servis_kaydi",
+          "referenced_table": "",
+          "columns": [
+            "servis_kaydi_id"
+          ]
+        },
+        {
+          "name": "servis_kaydi_acilis_randevu_id_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (acilis_randevu_id)",
+          "table": "public.servis_kaydi",
+          "referenced_table": "",
+          "columns": [
+            "acilis_randevu_id"
+          ]
+        },
+        {
+          "name": "servis_kaydi_teslim_randevu_id_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (teslim_randevu_id)",
+          "table": "public.servis_kaydi",
+          "referenced_table": "",
+          "columns": [
+            "teslim_randevu_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.servis_durum_gecmisi",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "gecmis_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "servis_kaydi_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "durum",
+          "type": "varchar(32)",
+          "nullable": false
+        },
+        {
+          "name": "zaman",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "aciklama",
+          "type": "text",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "servis_durum_gecmisi_pkey",
+          "def": "CREATE UNIQUE INDEX servis_durum_gecmisi_pkey ON public.servis_durum_gecmisi USING btree (gecmis_id)",
+          "table": "public.servis_durum_gecmisi",
+          "columns": [
+            "gecmis_id"
+          ]
+        },
+        {
+          "name": "servis_durum_gecmisi_servis_kaydi_id_zaman_key",
+          "def": "CREATE UNIQUE INDEX servis_durum_gecmisi_servis_kaydi_id_zaman_key ON public.servis_durum_gecmisi USING btree (servis_kaydi_id, zaman)",
+          "table": "public.servis_durum_gecmisi",
+          "columns": [
+            "servis_kaydi_id",
+            "zaman"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "servis_durum_gecmisi_durum_check",
+          "type": "CHECK",
+          "def": "CHECK (((durum)::text = ANY ((ARRAY['INCELENIYOR'::character varying, 'PARCA_BEKLENIYOR'::character varying, 'EKSPERTIZ_BEKLENIYOR'::character varying, 'ISLEMDE'::character varying, 'TESLIME_HAZIR'::character varying, 'TAMAMLANDI'::character varying])::text[])))",
+          "table": "public.servis_durum_gecmisi",
+          "referenced_table": "",
+          "columns": [
+            "durum"
+          ]
+        },
+        {
+          "name": "servis_durum_gecmisi_servis_kaydi_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (servis_kaydi_id) REFERENCES servis_kaydi(servis_kaydi_id) ON DELETE CASCADE",
+          "table": "public.servis_durum_gecmisi",
+          "referenced_table": "public.servis_kaydi",
+          "columns": [
+            "servis_kaydi_id"
+          ],
+          "referenced_columns": [
+            "servis_kaydi_id"
+          ]
+        },
+        {
+          "name": "servis_durum_gecmisi_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (gecmis_id)",
+          "table": "public.servis_durum_gecmisi",
+          "referenced_table": "",
+          "columns": [
+            "gecmis_id"
+          ]
+        },
+        {
+          "name": "servis_durum_gecmisi_servis_kaydi_id_zaman_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (servis_kaydi_id, zaman)",
+          "table": "public.servis_durum_gecmisi",
+          "referenced_table": "",
+          "columns": [
+            "servis_kaydi_id",
+            "zaman"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.servis_islem",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "islem_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "servis_kaydi_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "islem_adi",
+          "type": "varchar(128)",
+          "nullable": false
+        },
+        {
+          "name": "ucret",
+          "type": "bigint",
+          "nullable": false
+        },
+        {
+          "name": "odeme_kaynagi",
+          "type": "varchar(10)",
+          "nullable": false
+        },
+        {
+          "name": "aciklama",
+          "type": "text",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "servis_islem_pkey",
+          "def": "CREATE UNIQUE INDEX servis_islem_pkey ON public.servis_islem USING btree (islem_id)",
+          "table": "public.servis_islem",
+          "columns": [
+            "islem_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "servis_islem_odeme_kaynagi_check",
+          "type": "CHECK",
+          "def": "CHECK (((odeme_kaynagi)::text = ANY ((ARRAY['MUSTERI'::character varying, 'GARANTI'::character varying, 'SIGORTA'::character varying])::text[])))",
+          "table": "public.servis_islem",
+          "referenced_table": "",
+          "columns": [
+            "odeme_kaynagi"
+          ]
+        },
+        {
+          "name": "servis_islem_ucret_check",
+          "type": "CHECK",
+          "def": "CHECK ((ucret \u003e= 0))",
+          "table": "public.servis_islem",
+          "referenced_table": "",
+          "columns": [
+            "ucret"
+          ]
+        },
+        {
+          "name": "servis_islem_servis_kaydi_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (servis_kaydi_id) REFERENCES servis_kaydi(servis_kaydi_id) ON DELETE CASCADE",
+          "table": "public.servis_islem",
+          "referenced_table": "public.servis_kaydi",
+          "columns": [
+            "servis_kaydi_id"
+          ],
+          "referenced_columns": [
+            "servis_kaydi_id"
+          ]
+        },
+        {
+          "name": "servis_islem_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (islem_id)",
+          "table": "public.servis_islem",
+          "referenced_table": "",
+          "columns": [
+            "islem_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.sigorta_sirketi",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "sirket_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "ad",
+          "type": "varchar(128)",
+          "nullable": false
+        },
+        {
+          "name": "iletisim_tel",
+          "type": "varchar(32)",
+          "nullable": true
+        },
+        {
+          "name": "eposta",
+          "type": "varchar(254)",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "sigorta_sirketi_pkey",
+          "def": "CREATE UNIQUE INDEX sigorta_sirketi_pkey ON public.sigorta_sirketi USING btree (sirket_id)",
+          "table": "public.sigorta_sirketi",
+          "columns": [
+            "sirket_id"
+          ]
+        },
+        {
+          "name": "sigorta_sirketi_ad_key",
+          "def": "CREATE UNIQUE INDEX sigorta_sirketi_ad_key ON public.sigorta_sirketi USING btree (ad)",
+          "table": "public.sigorta_sirketi",
+          "columns": [
+            "ad"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sigorta_sirketi_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (sirket_id)",
+          "table": "public.sigorta_sirketi",
+          "referenced_table": "",
+          "columns": [
+            "sirket_id"
+          ]
+        },
+        {
+          "name": "sigorta_sirketi_ad_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (ad)",
+          "table": "public.sigorta_sirketi",
+          "referenced_table": "",
+          "columns": [
+            "ad"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.servis_sigorta",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "servis_kaydi_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "sirket_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "dosya_no",
+          "type": "varchar(64)",
+          "nullable": false
+        },
+        {
+          "name": "eksper",
+          "type": "varchar(128)",
+          "nullable": true
+        },
+        {
+          "name": "onaylanan_tutar",
+          "type": "bigint",
+          "nullable": false,
+          "default": "0"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "servis_sigorta_pkey",
+          "def": "CREATE UNIQUE INDEX servis_sigorta_pkey ON public.servis_sigorta USING btree (servis_kaydi_id)",
+          "table": "public.servis_sigorta",
+          "columns": [
+            "servis_kaydi_id"
+          ]
+        },
+        {
+          "name": "servis_sigorta_sirket_id_dosya_no_key",
+          "def": "CREATE UNIQUE INDEX servis_sigorta_sirket_id_dosya_no_key ON public.servis_sigorta USING btree (sirket_id, dosya_no)",
+          "table": "public.servis_sigorta",
+          "columns": [
+            "sirket_id",
+            "dosya_no"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "servis_sigorta_onaylanan_tutar_check",
+          "type": "CHECK",
+          "def": "CHECK ((onaylanan_tutar \u003e= 0))",
+          "table": "public.servis_sigorta",
+          "referenced_table": "",
+          "columns": [
+            "onaylanan_tutar"
+          ]
+        },
+        {
+          "name": "servis_sigorta_servis_kaydi_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (servis_kaydi_id) REFERENCES servis_kaydi(servis_kaydi_id) ON DELETE CASCADE",
+          "table": "public.servis_sigorta",
+          "referenced_table": "public.servis_kaydi",
+          "columns": [
+            "servis_kaydi_id"
+          ],
+          "referenced_columns": [
+            "servis_kaydi_id"
+          ]
+        },
+        {
+          "name": "servis_sigorta_sirket_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (sirket_id) REFERENCES sigorta_sirketi(sirket_id)",
+          "table": "public.servis_sigorta",
+          "referenced_table": "public.sigorta_sirketi",
+          "columns": [
+            "sirket_id"
+          ],
+          "referenced_columns": [
+            "sirket_id"
+          ]
+        },
+        {
+          "name": "servis_sigorta_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (servis_kaydi_id)",
+          "table": "public.servis_sigorta",
+          "referenced_table": "",
+          "columns": [
+            "servis_kaydi_id"
+          ]
+        },
+        {
+          "name": "servis_sigorta_sirket_id_dosya_no_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (sirket_id, dosya_no)",
+          "table": "public.servis_sigorta",
+          "referenced_table": "",
+          "columns": [
+            "sirket_id",
+            "dosya_no"
+          ]
+        }
+      ]
     }
   ],
   "relations": [
@@ -1294,6 +2289,1344 @@
       ],
       "parent_cardinality": "exactly_one",
       "def": "FOREIGN KEY (arac_vin) REFERENCES arac(vin)"
+    },
+    {
+      "table": "public.randevu_turu",
+      "columns": [
+        "yetkinlik_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.yetkinlik",
+      "parent_columns": [
+        "yetkinlik_id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (yetkinlik_id) REFERENCES yetkinlik(yetkinlik_id)"
+    },
+    {
+      "table": "public.tur_saat",
+      "columns": [
+        "gun"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.mesai",
+      "parent_columns": [
+        "gun"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (gun) REFERENCES mesai(gun)"
+    },
+    {
+      "table": "public.tur_saat",
+      "columns": [
+        "tur_kodu"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.randevu_turu",
+      "parent_columns": [
+        "tur_kodu"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (tur_kodu) REFERENCES randevu_turu(tur_kodu) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.randevu",
+      "columns": [
+        "sube_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.sube",
+      "parent_columns": [
+        "sube_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (sube_id) REFERENCES sube(sube_id)"
+    },
+    {
+      "table": "public.randevu",
+      "columns": [
+        "calisan_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.calisan",
+      "parent_columns": [
+        "calisan_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (calisan_id) REFERENCES calisan(calisan_id)"
+    },
+    {
+      "table": "public.randevu",
+      "columns": [
+        "versiyon_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.versiyon",
+      "parent_columns": [
+        "versiyon_id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (versiyon_id) REFERENCES versiyon(versiyon_id)"
+    },
+    {
+      "table": "public.randevu",
+      "columns": [
+        "musteri_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.musteri",
+      "parent_columns": [
+        "musteri_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (musteri_id) REFERENCES musteri(musteri_id) ON DELETE RESTRICT"
+    },
+    {
+      "table": "public.randevu",
+      "columns": [
+        "arac_vin"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.arac",
+      "parent_columns": [
+        "vin"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (arac_vin) REFERENCES arac(vin)"
+    },
+    {
+      "table": "public.randevu",
+      "columns": [
+        "tur_kodu"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.randevu_turu",
+      "parent_columns": [
+        "tur_kodu"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (tur_kodu) REFERENCES randevu_turu(tur_kodu)"
+    },
+    {
+      "table": "public.servis_kaydi",
+      "columns": [
+        "sorumlu_calisan_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.calisan",
+      "parent_columns": [
+        "calisan_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (sorumlu_calisan_id) REFERENCES calisan(calisan_id)"
+    },
+    {
+      "table": "public.servis_kaydi",
+      "columns": [
+        "acilis_randevu_id"
+      ],
+      "cardinality": "zero_or_one",
+      "parent_table": "public.randevu",
+      "parent_columns": [
+        "randevu_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (acilis_randevu_id) REFERENCES randevu(randevu_id)"
+    },
+    {
+      "table": "public.servis_kaydi",
+      "columns": [
+        "teslim_randevu_id"
+      ],
+      "cardinality": "zero_or_one",
+      "parent_table": "public.randevu",
+      "parent_columns": [
+        "randevu_id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (teslim_randevu_id) REFERENCES randevu(randevu_id)"
+    },
+    {
+      "table": "public.servis_durum_gecmisi",
+      "columns": [
+        "servis_kaydi_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.servis_kaydi",
+      "parent_columns": [
+        "servis_kaydi_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (servis_kaydi_id) REFERENCES servis_kaydi(servis_kaydi_id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.servis_islem",
+      "columns": [
+        "servis_kaydi_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.servis_kaydi",
+      "parent_columns": [
+        "servis_kaydi_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (servis_kaydi_id) REFERENCES servis_kaydi(servis_kaydi_id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.servis_sigorta",
+      "columns": [
+        "servis_kaydi_id"
+      ],
+      "cardinality": "zero_or_one",
+      "parent_table": "public.servis_kaydi",
+      "parent_columns": [
+        "servis_kaydi_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (servis_kaydi_id) REFERENCES servis_kaydi(servis_kaydi_id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.servis_sigorta",
+      "columns": [
+        "sirket_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.sigorta_sirketi",
+      "parent_columns": [
+        "sirket_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (sirket_id) REFERENCES sigorta_sirketi(sirket_id)"
+    }
+  ],
+  "functions": [
+    {
+      "name": "public.gbtreekey4_in",
+      "return_type": "gbtreekey4",
+      "arguments": "cstring",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey4_out",
+      "return_type": "cstring",
+      "arguments": "gbtreekey4",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey8_in",
+      "return_type": "gbtreekey8",
+      "arguments": "cstring",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey8_out",
+      "return_type": "cstring",
+      "arguments": "gbtreekey8",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey16_in",
+      "return_type": "gbtreekey16",
+      "arguments": "cstring",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey16_out",
+      "return_type": "cstring",
+      "arguments": "gbtreekey16",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey32_in",
+      "return_type": "gbtreekey32",
+      "arguments": "cstring",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey32_out",
+      "return_type": "cstring",
+      "arguments": "gbtreekey32",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey_var_in",
+      "return_type": "gbtreekey_var",
+      "arguments": "cstring",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey_var_out",
+      "return_type": "cstring",
+      "arguments": "gbtreekey_var",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.cash_dist",
+      "return_type": "money",
+      "arguments": "money, money",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.date_dist",
+      "return_type": "int4",
+      "arguments": "date, date",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.float4_dist",
+      "return_type": "float4",
+      "arguments": "real, real",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.float8_dist",
+      "return_type": "float8",
+      "arguments": "double precision, double precision",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.int2_dist",
+      "return_type": "int2",
+      "arguments": "smallint, smallint",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.int4_dist",
+      "return_type": "int4",
+      "arguments": "integer, integer",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.int8_dist",
+      "return_type": "int8",
+      "arguments": "bigint, bigint",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.interval_dist",
+      "return_type": "interval",
+      "arguments": "interval, interval",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.oid_dist",
+      "return_type": "oid",
+      "arguments": "oid, oid",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.time_dist",
+      "return_type": "interval",
+      "arguments": "time without time zone, time without time zone",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.ts_dist",
+      "return_type": "interval",
+      "arguments": "timestamp without time zone, timestamp without time zone",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.tstz_dist",
+      "return_type": "interval",
+      "arguments": "timestamp with time zone, timestamp with time zone",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_oid_consistent",
+      "return_type": "bool",
+      "arguments": "internal, oid, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_oid_distance",
+      "return_type": "float8",
+      "arguments": "internal, oid, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_oid_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_oid_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_decompress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_var_decompress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_var_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_oid_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_oid_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_oid_union",
+      "return_type": "gbtreekey8",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_oid_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey8, gbtreekey8, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int2_consistent",
+      "return_type": "bool",
+      "arguments": "internal, smallint, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int2_distance",
+      "return_type": "float8",
+      "arguments": "internal, smallint, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int2_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int2_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int2_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int2_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int2_union",
+      "return_type": "gbtreekey4",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int2_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey4, gbtreekey4, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int4_consistent",
+      "return_type": "bool",
+      "arguments": "internal, integer, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int4_distance",
+      "return_type": "float8",
+      "arguments": "internal, integer, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int4_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int4_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int4_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int4_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int4_union",
+      "return_type": "gbtreekey8",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int4_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey8, gbtreekey8, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int8_consistent",
+      "return_type": "bool",
+      "arguments": "internal, bigint, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int8_distance",
+      "return_type": "float8",
+      "arguments": "internal, bigint, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int8_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int8_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int8_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int8_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int8_union",
+      "return_type": "gbtreekey16",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int8_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey16, gbtreekey16, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float4_consistent",
+      "return_type": "bool",
+      "arguments": "internal, real, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float4_distance",
+      "return_type": "float8",
+      "arguments": "internal, real, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float4_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float4_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float4_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float4_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float4_union",
+      "return_type": "gbtreekey8",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float4_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey8, gbtreekey8, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float8_consistent",
+      "return_type": "bool",
+      "arguments": "internal, double precision, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float8_distance",
+      "return_type": "float8",
+      "arguments": "internal, double precision, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float8_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float8_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float8_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float8_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float8_union",
+      "return_type": "gbtreekey16",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float8_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey16, gbtreekey16, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_ts_consistent",
+      "return_type": "bool",
+      "arguments": "internal, timestamp without time zone, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_ts_distance",
+      "return_type": "float8",
+      "arguments": "internal, timestamp without time zone, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_tstz_consistent",
+      "return_type": "bool",
+      "arguments": "internal, timestamp with time zone, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_tstz_distance",
+      "return_type": "float8",
+      "arguments": "internal, timestamp with time zone, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_ts_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_tstz_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_ts_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_ts_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_ts_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_ts_union",
+      "return_type": "gbtreekey16",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_ts_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey16, gbtreekey16, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_time_consistent",
+      "return_type": "bool",
+      "arguments": "internal, time without time zone, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_time_distance",
+      "return_type": "float8",
+      "arguments": "internal, time without time zone, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_timetz_consistent",
+      "return_type": "bool",
+      "arguments": "internal, time with time zone, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_time_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_timetz_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_time_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_time_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_time_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_time_union",
+      "return_type": "gbtreekey16",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_time_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey16, gbtreekey16, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_date_consistent",
+      "return_type": "bool",
+      "arguments": "internal, date, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_date_distance",
+      "return_type": "float8",
+      "arguments": "internal, date, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_date_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_date_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_date_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_date_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_date_union",
+      "return_type": "gbtreekey8",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_date_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey8, gbtreekey8, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_intv_consistent",
+      "return_type": "bool",
+      "arguments": "internal, interval, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_intv_distance",
+      "return_type": "float8",
+      "arguments": "internal, interval, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_intv_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_intv_decompress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_intv_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_intv_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_intv_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_intv_union",
+      "return_type": "gbtreekey32",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_intv_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey32, gbtreekey32, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_cash_consistent",
+      "return_type": "bool",
+      "arguments": "internal, money, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_cash_distance",
+      "return_type": "float8",
+      "arguments": "internal, money, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_cash_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_cash_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_cash_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_cash_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_cash_union",
+      "return_type": "gbtreekey16",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_cash_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey16, gbtreekey16, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad_consistent",
+      "return_type": "bool",
+      "arguments": "internal, macaddr, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad_union",
+      "return_type": "gbtreekey16",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey16, gbtreekey16, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_text_consistent",
+      "return_type": "bool",
+      "arguments": "internal, text, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bpchar_consistent",
+      "return_type": "bool",
+      "arguments": "internal, character, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_text_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bpchar_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_text_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_text_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_text_union",
+      "return_type": "gbtreekey_var",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_text_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey_var, gbtreekey_var, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bytea_consistent",
+      "return_type": "bool",
+      "arguments": "internal, bytea, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bytea_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bytea_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bytea_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bytea_union",
+      "return_type": "gbtreekey_var",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bytea_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey_var, gbtreekey_var, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_numeric_consistent",
+      "return_type": "bool",
+      "arguments": "internal, numeric, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_numeric_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_numeric_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_numeric_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_numeric_union",
+      "return_type": "gbtreekey_var",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_numeric_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey_var, gbtreekey_var, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bit_consistent",
+      "return_type": "bool",
+      "arguments": "internal, bit, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bit_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bit_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bit_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bit_union",
+      "return_type": "gbtreekey_var",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bit_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey_var, gbtreekey_var, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_inet_consistent",
+      "return_type": "bool",
+      "arguments": "internal, inet, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_inet_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_inet_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_inet_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_inet_union",
+      "return_type": "gbtreekey16",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_inet_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey16, gbtreekey16, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_uuid_consistent",
+      "return_type": "bool",
+      "arguments": "internal, uuid, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_uuid_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_uuid_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_uuid_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_uuid_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_uuid_union",
+      "return_type": "gbtreekey32",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_uuid_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey32, gbtreekey32, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad8_consistent",
+      "return_type": "bool",
+      "arguments": "internal, macaddr8, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad8_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad8_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad8_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad8_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad8_union",
+      "return_type": "gbtreekey16",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad8_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey16, gbtreekey16, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_enum_consistent",
+      "return_type": "bool",
+      "arguments": "internal, anyenum, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_enum_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_enum_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_enum_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_enum_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_enum_union",
+      "return_type": "gbtreekey8",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_enum_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey8, gbtreekey8, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey2_in",
+      "return_type": "gbtreekey2",
+      "arguments": "cstring",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey2_out",
+      "return_type": "cstring",
+      "arguments": "gbtreekey2",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bool_consistent",
+      "return_type": "bool",
+      "arguments": "internal, boolean, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bool_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bool_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bool_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bool_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bool_union",
+      "return_type": "gbtreekey2",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bool_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey2, gbtreekey2, internal",
+      "type": "FUNCTION"
     }
   ],
   "driver": {
