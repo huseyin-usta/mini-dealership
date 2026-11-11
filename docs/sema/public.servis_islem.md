@@ -26,6 +26,12 @@
 | ---- | ---------- |
 | servis_islem_pkey | CREATE UNIQUE INDEX servis_islem_pkey ON public.servis_islem USING btree (islem_id) |
 
+## Triggers
+
+| Name | Definition |
+| ---- | ---------- |
+| trg_servis_islem_garanti | CREATE TRIGGER trg_servis_islem_garanti BEFORE INSERT OR UPDATE ON public.servis_islem FOR EACH ROW EXECUTE FUNCTION fn_servis_islem_garanti_kontrol() |
+
 ## Relations
 
 ![er](public.servis_islem.svg)

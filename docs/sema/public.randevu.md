@@ -45,6 +45,12 @@
 | randevu_arac_vin_tsrange_excl | CREATE INDEX randevu_arac_vin_tsrange_excl ON public.randevu USING gist (arac_vin, tsrange(baslangic, bitis)) WHERE ((arac_vin IS NOT NULL) AND ((durum)::text <> 'IPTAL'::text)) |
 | randevu_musteri_id_tsrange_excl | CREATE INDEX randevu_musteri_id_tsrange_excl ON public.randevu USING gist (musteri_id, tsrange(baslangic, bitis)) WHERE ((durum)::text <> 'IPTAL'::text) |
 
+## Triggers
+
+| Name | Definition |
+| ---- | ---------- |
+| trg_randevu_dogrula | CREATE TRIGGER trg_randevu_dogrula BEFORE INSERT OR UPDATE ON public.randevu FOR EACH ROW EXECUTE FUNCTION fn_randevu_dogrula() |
+
 ## Relations
 
 ![er](public.randevu.svg)

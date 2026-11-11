@@ -217,6 +217,8 @@
 | public.gbt_bool_picksplit | internal | internal, internal | FUNCTION |
 | public.gbt_bool_union | gbtreekey2 | internal, internal | FUNCTION |
 | public.gbt_bool_same | internal | gbtreekey2, gbtreekey2, internal | FUNCTION |
+| public.fn_servis_islem_garanti_kontrol | trigger |  | FUNCTION |
+| public.fn_randevu_dogrula | trigger |  | FUNCTION |
 
 ## Relations
 

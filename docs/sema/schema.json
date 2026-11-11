@@ -1576,6 +1576,12 @@
             "musteri_id"
           ]
         }
+      ],
+      "triggers": [
+        {
+          "name": "trg_randevu_dogrula",
+          "def": "CREATE TRIGGER trg_randevu_dogrula BEFORE INSERT OR UPDATE ON public.randevu FOR EACH ROW EXECUTE FUNCTION fn_randevu_dogrula()"
+        }
       ]
     },
     {
@@ -1953,6 +1959,12 @@
           "columns": [
             "islem_id"
           ]
+        }
+      ],
+      "triggers": [
+        {
+          "name": "trg_servis_islem_garanti",
+          "def": "CREATE TRIGGER trg_servis_islem_garanti BEFORE INSERT OR UPDATE ON public.servis_islem FOR EACH ROW EXECUTE FUNCTION fn_servis_islem_garanti_kontrol()"
         }
       ]
     },
@@ -3626,6 +3638,18 @@
       "name": "public.gbt_bool_same",
       "return_type": "internal",
       "arguments": "gbtreekey2, gbtreekey2, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.fn_servis_islem_garanti_kontrol",
+      "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.fn_randevu_dogrula",
+      "return_type": "trigger",
+      "arguments": "",
       "type": "FUNCTION"
     }
   ],
