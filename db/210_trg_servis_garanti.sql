@@ -36,14 +36,21 @@ BEGIN
 
     -- 3. Ödeme kaynağı GARANTI ise garanti geçerliliğini hesapla
     IF NEW.odeme_kaynagi = 'GARANTI' THEN
-        -- Modelin garanti sınırlarını ve aracın satış tarihini çek
-        SELECT m.garanti_yil, m.garanti_km, sh.zaman
-          INTO v_garanti_yil, v_garanti_km, v_satis_zamani
+        -- Modelin garanti sınırlarını çek
+        SELECT m.garanti_yil, m.garanti_km
+          INTO v_garanti_yil, v_garanti_km
           FROM arac a
           JOIN versiyon v ON v.versiyon_id = a.versiyon_id
           JOIN model m ON m.model_id = v.model_id
-          LEFT JOIN stok_hareketi sh ON sh.arac_vin = a.vin AND sh.hareket_turu = 'SATIS'
          WHERE a.vin = v_arac_vin;
+
+        -- Aracın ilk satış tarihini çek (garantinin başlangıç anı)
+        SELECT sh.zaman
+          INTO v_satis_zamani
+          FROM stok_hareketi sh
+         WHERE sh.arac_vin = v_arac_vin AND sh.hareket_turu = 'SATIS'
+         ORDER BY sh.zaman ASC
+         LIMIT 1;
 
         -- Henüz satılmamış veya satış kaydı olmayan araç garanti kapsamında işlem göremez
         IF v_satis_zamani IS NULL THEN
@@ -74,6 +81,7 @@ BEGIN
              WHERE r.arac_vin = v_arac_vin
                AND sk.sebep = 'BAKIM'
                AND sk.servis_kaydi_id <> NEW.servis_kaydi_id
+               AND r.durum NOT IN ('IPTAL', 'GELMEDI')
                AND r.baslangic <= v_servis_zamani
              ORDER BY r.baslangic ASC
         LOOP

@@ -68,10 +68,9 @@ BEGIN
     END IF;
 
     -- 3. Süre kontrolü (dakika cinsinden tam uyuşmalı)
-    v_sure_dk := EXTRACT(EPOCH FROM (NEW.bitis - NEW.baslangic)) / 60;
-    IF v_sure_dk <> v_tur_sure THEN
-        RAISE EXCEPTION 'Randevu süresi (% dk) bu randevu türünün standart süresine (% dk) eşit olmalıdır.',
-            v_sure_dk, v_tur_sure;
+    IF (NEW.bitis - NEW.baslangic) <> (v_tur_sure || ' minutes')::interval THEN
+        RAISE EXCEPTION 'Randevu süresi bu randevu türünün standart süresine (% dk) eşit olmalıdır.',
+            v_tur_sure;
     END IF;
 
     -- 4. Tür saat penceresi kontrolü (randevu izin verilen saat aralığında mı?)
@@ -123,3 +122,4 @@ CREATE TRIGGER trg_randevu_dogrula
 BEFORE INSERT OR UPDATE ON randevu
 FOR EACH ROW
 EXECUTE FUNCTION fn_randevu_dogrula();
+
