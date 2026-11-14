@@ -11,16 +11,23 @@ session'lara ve ekip arkadaşına bağlam aktarımı içindir.
 3. `mini-dealership.md` — spec; PDF'lerle uyumlu tutulur (ör. mesai kuralı PDF'e
    göre düzeltildi). Değiştirmeden önce kullanıcıya sor.
 
-## Durum (11 Kasım 2026 itibarıyla)
+## Durum (14 Kasım 2026 itibarıyla)
 
 - GitHub reposu: **github.com/huseyin-usta/mini-dealership** (public, `main`).
   Commit yazarı: `h.usta@etu.edu.tr` (gt-arc maili KULLANILMAZ).
   Collaborator: `aslyagm` (Şevda Yağmur ASAL, write yetkisi).
 - İlerleme: `db/` altında **20/20 tablo DDL ve kritik doğrulama trigger'ları tamamlandı** 
   (`210_trg_servis_garanti.sql` ve `220_trg_randevu_dogrula.sql` PostgreSQL üzerinde test edildi).
-- Kalan işler: Rapor ve maskeli view'lar, ardından roller + GRANT/REVOKE (ve RLS).
+- **View'lar tamamlandı** (`300`–`350`): maskeleme fonksiyonları, müşteri son randevu,
+  servis durumu, garanti durumu, maskeli rapor view'ları, bot için PII'siz `v_dolu_slot`.
+- **Roller + RLS + GRANT/REVOKE tamamlandı** (`400`–`420`): admin/personel/bot/rapor
+  NOLOGIN rolleri; bot kimliği `SET LOCAL app.musteri_telefon` ile (fail-closed);
+  hiçbir role DELETE yok. Doğrulama trigger'ları `420`'de SECURITY DEFINER yapıldı
+  (RLS altında araç NULL okunup kontrol atlanmasın diye).
+- Test: `scripts/test-db.sh` 22 senaryo (trigger, view, rol/RLS), hepsi geçiyor.
+- Kalan işler: 250.000+ satırlık veri üretici, ardından analitik sorgular + indeks analizi.
 - Şema görselleştirme: `scripts/sema-diyagram.sh` (tbls + geçici Docker Postgres)
-  → `docs/sema/` çıktısı trigger'larla güncellendi.
+  → `docs/sema/` çıktısı trigger'larla güncellendi (view'lar ve roller henüz yansıtılmadı).
 - Takvim: son rapor **3 Aralık 2026**, dönem sonunda demo.
 - Görev dağılımı: spec'in "Görev dağılımı" bölümünde.
 
