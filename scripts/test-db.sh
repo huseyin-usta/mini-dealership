@@ -360,6 +360,163 @@ BEGIN
   RAISE NOTICE '  [PASS] Test 13: Bakimli ve suresi dolmamis aracta garanti odemesi basariyla kabul edildi';
 END $$;
 
+-- ===== VIEW TESTLERİ =====
+-- Tarihler bugüne göre hesaplanır (garanti/gecikme "bugün" itibarıyla türetilir).
+-- Randevular geçmiş haftaların Pazartesi 15:00'ine konur (tur_saat penceresi içinde).
+
+-- TEST 14: Maskeleme fonksiyonları ve maskeli rapor view'ları ham PII sızdırmaz
+DO $$
+BEGIN
+  IF fn_maskele_telefon('+905321234567') <> '0532 *** ** 67'
+     OR fn_maskele_telefon('0532 123 45 67') <> '0532 *** ** 67'
+     OR fn_maskele_telefon('123') <> '*** *** ** **'
+     OR fn_maskele_ad('ayşe') <> 'A***'
+     OR fn_maskele_ad('  ') <> '***' THEN
+    RAISE EXCEPTION 'TEST 14 BASARISIZ: maskeleme fonksiyonu hatali';
+  END IF;
+
+  IF (SELECT telefon FROM v_rapor_musteri WHERE musteri_id = 1) <> '0555 *** ** 22'
+     OR (SELECT ad || ' ' || soyad FROM v_rapor_musteri WHERE musteri_id = 1) <> 'A*** M***' THEN
+    RAISE EXCEPTION 'TEST 14 BASARISIZ: v_rapor_musteri maskelemiyor';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM v_rapor_randevu
+              WHERE musteri_telefon LIKE '%0001122%' OR musteri LIKE '%Ali%' OR musteri LIKE '%Musteri%') THEN
+    RAISE EXCEPTION 'TEST 14 BASARISIZ: v_rapor_randevu ham PII iceriyor';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM v_rapor_randevu WHERE model_adi = 'Ioniq 5' AND sube_adi = 'Cankaya') THEN
+    RAISE EXCEPTION 'TEST 14 BASARISIZ: v_rapor_randevu join bilgisi eksik';
+  END IF;
+  RAISE NOTICE '  [PASS] Test 14: Maskeli rapor view''lari PII sizdirmiyor';
+END $$;
+
+-- TEST 15: Müşterinin son randevusu iptal edilenleri saymaz
+DO $$
+DECLARE v_son record;
+BEGIN
+  -- Müşteri 1'in en geç randevusu 2026-11-16 22:00 ama IPTAL; bir önceki aktif olan seçilmeli
+  SELECT * INTO v_son FROM v_musteri_son_randevu WHERE musteri_id = 1;
+  IF v_son.baslangic <> (SELECT max(baslangic) FROM randevu WHERE musteri_id = 1 AND durum <> 'IPTAL')
+     OR v_son.durum = 'IPTAL' OR v_son.sube_adi <> 'Cankaya' THEN
+    RAISE EXCEPTION 'TEST 15 BASARISIZ: son randevu yanlis (%)', v_son;
+  END IF;
+
+  -- Yalnızca iptal randevusu olan müşteri listede yer almaz
+  INSERT INTO musteri (ad, soyad, telefon) VALUES ('Zeynep', 'Kaya', '+905321234567');
+  INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak)
+  VALUES (2, 1, 'TEST_SURUSU', 1, 'VIN11111111111111', '2026-11-17 22:00', '2026-11-17 23:00', 'IPTAL', 'WHATSAPP');
+  IF EXISTS (SELECT 1 FROM v_musteri_son_randevu WHERE musteri_id = 2) THEN
+    RAISE EXCEPTION 'TEST 15 BASARISIZ: iptal randevu son randevu sayildi';
+  END IF;
+  RAISE NOTICE '  [PASS] Test 15: Musterinin son randevusu dogru (iptaller haric)';
+END $$;
+
+-- TEST 16: Servis durumu — son durum, kalan gün, gecikme, masraf kırılımı
+DO $$
+DECLARE
+  v_pzt date := date_trunc('week', current_date)::date;  -- bu haftanın Pazartesi'si
+  v_r integer; v_sk integer; v_s record;
+BEGIN
+  -- VIN55: 20 hafta önce satıldı, 2 hafta önce arıza ile servise girdi (5.000 km)
+  INSERT INTO arac (vin, versiyon_id, sube_id, renk, plaka, durum, musteri_id)
+  VALUES ('VIN55555555555555', 1, 1, 'Mavi', '06VIEW55', 'SATILDI', 2);
+  INSERT INTO stok_hareketi (arac_vin, hareket_turu, zaman, kaynak_sube_id)
+  VALUES ('VIN55555555555555', 'SATIS', (v_pzt - 140) + time '15:00', 1);
+
+  INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak)
+  VALUES (2, 1, 'SERVIS_GIRIS', 2, 'VIN55555555555555', (v_pzt - 14) + time '15:00', (v_pzt - 14) + time '15:30', 'TAMAMLANDI', 'PANEL')
+  RETURNING randevu_id INTO v_r;
+  INSERT INTO servis_kaydi (acilis_randevu_id, sorumlu_calisan_id, sebep, giris_kilometresi, tahmini_teslim_tarihi)
+  VALUES (v_r, 2, 'ARIZA', 5000, current_date - 3)
+  RETURNING servis_kaydi_id INTO v_sk;
+
+  INSERT INTO servis_durum_gecmisi (servis_kaydi_id, durum, zaman) VALUES
+    (v_sk, 'INCELENIYOR', (v_pzt - 14) + time '15:30'),
+    (v_sk, 'ISLEMDE',     (v_pzt - 13) + time '09:00');
+  INSERT INTO servis_islem (servis_kaydi_id, islem_adi, ucret, odeme_kaynagi) VALUES
+    (v_sk, 'Sensor Degisimi', 5000, 'MUSTERI'),
+    (v_sk, 'Iscilik',         2000, 'MUSTERI');
+
+  SELECT * INTO v_s FROM v_servis_durumu WHERE servis_kaydi_id = v_sk;
+  IF v_s.son_durum <> 'ISLEMDE' OR v_s.kalan_gun <> -3 OR NOT v_s.gecikti_mi OR v_s.kapandi_mi
+     OR v_s.toplam_masraf <> 7000 OR v_s.musteri_payi <> 7000 OR v_s.garanti_payi <> 0 THEN
+    RAISE EXCEPTION 'TEST 16 BASARISIZ: servis durumu yanlis (%)', v_s;
+  END IF;
+
+  -- Teslime hazır + tamamlandı olunca gecikmede sayılmaz
+  INSERT INTO servis_durum_gecmisi (servis_kaydi_id, durum, zaman)
+  VALUES (v_sk, 'TAMAMLANDI', (v_pzt - 12) + time '09:00');
+  IF (SELECT gecikti_mi OR NOT kapandi_mi FROM v_servis_durumu WHERE servis_kaydi_id = v_sk) THEN
+    RAISE EXCEPTION 'TEST 16 BASARISIZ: tamamlanan kayit gecikmede sayildi';
+  END IF;
+  RAISE NOTICE '  [PASS] Test 16: Servis durumu, kalan gun ve masraf kirilimi dogru';
+END $$;
+
+-- TEST 17: Garanti durumu — GECERLI / BAKIM_AKSATILDI / KM_ASILDI / SURE_DOLDU
+DO $$
+DECLARE
+  v_pzt date := date_trunc('week', current_date)::date;
+  v_r integer; v_d text;
+BEGIN
+  -- VIN55 (Test 16): 20 hafta önce satıldı, 5.000 km, bakım zamanı gelmedi -> GECERLI
+  SELECT garanti_durumu INTO v_d FROM v_arac_garanti_durumu WHERE vin = 'VIN55555555555555';
+  IF v_d IS DISTINCT FROM 'GECERLI' THEN
+    RAISE EXCEPTION 'TEST 17 BASARISIZ: VIN55 GECERLI beklendi, % geldi', v_d;
+  END IF;
+  IF (SELECT sonraki_bakim_son_tarih FROM v_arac_garanti_durumu WHERE vin = 'VIN55555555555555')
+     <> ((v_pzt - 140) + interval '1 year')::date THEN
+    RAISE EXCEPTION 'TEST 17 BASARISIZ: VIN55 sonraki bakim tarihi yanlis';
+  END IF;
+
+  -- VIN66: 60 hafta önce satıldı, hiç bakım yok; gelecekte planlı bakım sayılmamalı -> BAKIM_AKSATILDI
+  INSERT INTO arac (vin, versiyon_id, sube_id, renk, plaka, durum, musteri_id)
+  VALUES ('VIN66666666666666', 1, 1, 'Beyaz', '06VIEW66', 'SATILDI', 2);
+  INSERT INTO stok_hareketi (arac_vin, hareket_turu, zaman, kaynak_sube_id)
+  VALUES ('VIN66666666666666', 'SATIS', (v_pzt - 420) + time '15:00', 1);
+  INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, kaynak)
+  VALUES (2, 1, 'PERIYODIK_BAKIM', 2, 'VIN66666666666666', (v_pzt + 21) + time '15:00', (v_pzt + 21) + time '16:00', 'WHATSAPP')
+  RETURNING randevu_id INTO v_r;
+  INSERT INTO servis_kaydi (acilis_randevu_id, sorumlu_calisan_id, sebep, giris_kilometresi)
+  VALUES (v_r, 2, 'BAKIM', 9000);
+
+  SELECT garanti_durumu INTO v_d FROM v_arac_garanti_durumu WHERE vin = 'VIN66666666666666';
+  IF v_d IS DISTINCT FROM 'BAKIM_AKSATILDI' THEN
+    RAISE EXCEPTION 'TEST 17 BASARISIZ: VIN66 BAKIM_AKSATILDI beklendi, % geldi', v_d;
+  END IF;
+
+  -- VIN77: 4 yıl önce satıldı (model garantisi 3 yıl) -> SURE_DOLDU
+  INSERT INTO arac (vin, versiyon_id, sube_id, renk, plaka, durum, musteri_id)
+  VALUES ('VIN77777777777777', 1, 1, 'Gri', '06VIEW77', 'SATILDI', 2);
+  INSERT INTO stok_hareketi (arac_vin, hareket_turu, zaman, kaynak_sube_id)
+  VALUES ('VIN77777777777777', 'SATIS', (current_date - interval '4 years') + interval '15 hours', 1);
+  SELECT garanti_durumu INTO v_d FROM v_arac_garanti_durumu WHERE vin = 'VIN77777777777777';
+  IF v_d IS DISTINCT FROM 'SURE_DOLDU' THEN
+    RAISE EXCEPTION 'TEST 17 BASARISIZ: VIN77 SURE_DOLDU beklendi, % geldi', v_d;
+  END IF;
+
+  -- VIN88: 10 hafta önce satıldı, 3 hafta önce 120.000 km ile servise geldi (sınır 100.000) -> KM_ASILDI
+  INSERT INTO arac (vin, versiyon_id, sube_id, renk, plaka, durum, musteri_id)
+  VALUES ('VIN88888888888888', 1, 1, 'Siyah', '06VIEW88', 'SATILDI', 2);
+  INSERT INTO stok_hareketi (arac_vin, hareket_turu, zaman, kaynak_sube_id)
+  VALUES ('VIN88888888888888', 'SATIS', (v_pzt - 70) + time '15:00', 1);
+  INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak)
+  VALUES (2, 1, 'SERVIS_GIRIS', 2, 'VIN88888888888888', (v_pzt - 21) + time '15:00', (v_pzt - 21) + time '15:30', 'TAMAMLANDI', 'PANEL')
+  RETURNING randevu_id INTO v_r;
+  INSERT INTO servis_kaydi (acilis_randevu_id, sorumlu_calisan_id, sebep, giris_kilometresi)
+  VALUES (v_r, 2, 'ARIZA', 120000);
+  SELECT garanti_durumu INTO v_d FROM v_arac_garanti_durumu WHERE vin = 'VIN88888888888888';
+  IF v_d IS DISTINCT FROM 'KM_ASILDI' THEN
+    RAISE EXCEPTION 'TEST 17 BASARISIZ: VIN88 KM_ASILDI beklendi, % geldi', v_d;
+  END IF;
+
+  -- Satılmamış araçlar listelenmez
+  IF EXISTS (SELECT 1 FROM v_arac_garanti_durumu WHERE vin IN ('VIN11111111111111', 'VIN22222222222222')) THEN
+    RAISE EXCEPTION 'TEST 17 BASARISIZ: satilmamis arac garanti view''inda';
+  END IF;
+  RAISE NOTICE '  [PASS] Test 17: Garanti durumu (gecerli / bakim aksatildi / km / sure) dogru hesaplandi';
+END $$;
+
 EOF
 
 echo ""
