@@ -517,6 +517,210 @@ BEGIN
   RAISE NOTICE '  [PASS] Test 17: Garanti durumu (gecerli / bakim aksatildi / km / sure) dogru hesaplandi';
 END $$;
 
+-- ===== ROL / YETKİ / RLS TESTLERİ =====
+-- Her test SET LOCAL ROLE ile ilgili role geçer (DO bloğu bitince geri döner).
+-- Yetki hatası ve RLS ihlali SQLSTATE 42501 (insufficient_privilege) döner.
+
+-- TEST 18: Hiçbir uygulama rolünün hiçbir tabloda DELETE / TRUNCATE yetkisi yok
+DO $$
+DECLARE v_sayi integer; v_rol text;
+BEGIN
+  SELECT count(*) INTO v_sayi
+    FROM pg_tables t, unnest(ARRAY['personel', 'bot', 'rapor']) AS rol
+   WHERE t.schemaname = 'public'
+     AND has_table_privilege(rol, format('public.%I', t.tablename), 'DELETE, TRUNCATE');
+  IF v_sayi <> 0 THEN
+    RAISE EXCEPTION 'TEST 18 BASARISIZ: % tabloda DELETE/TRUNCATE yetkisi var', v_sayi;
+  END IF;
+
+  FOREACH v_rol IN ARRAY ARRAY['personel', 'bot', 'rapor'] LOOP
+    BEGIN
+      EXECUTE format('SET LOCAL ROLE %I', v_rol);
+      DELETE FROM randevu WHERE randevu_id = 1;
+      RAISE EXCEPTION 'TEST 18 BASARISIZ: % rolu DELETE yapabildi', v_rol;
+    EXCEPTION WHEN insufficient_privilege THEN NULL;
+    END;
+  END LOOP;
+  RAISE NOTICE '  [PASS] Test 18: Hicbir rolun DELETE/TRUNCATE yetkisi yok';
+END $$;
+
+-- TEST 19: rapor rolü yalnızca view okur, müşteri ve randevu tablosuna erişemez
+DO $$
+BEGIN
+  SET LOCAL ROLE rapor;
+  PERFORM count(*) FROM v_rapor_musteri;
+  PERFORM count(*) FROM v_rapor_randevu;
+  PERFORM count(*) FROM v_servis_durumu;
+  PERFORM count(*) FROM v_arac_garanti_durumu;
+
+  BEGIN
+    PERFORM count(*) FROM musteri;
+    RAISE EXCEPTION 'TEST 19 BASARISIZ: rapor musteri tablosunu okudu';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  BEGIN
+    PERFORM count(*) FROM v_musteri_son_randevu;
+    RAISE EXCEPTION 'TEST 19 BASARISIZ: rapor maskesiz view okudu';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  RAISE NOTICE '  [PASS] Test 19: Rapor rolu yalnizca maskeli/PII''siz view''lari okuyor';
+END $$;
+
+-- TEST 20: bot RLS okuma — yalnızca konuştuğu müşteri; oturum değişkeni yoksa hiçbir şey
+DO $$
+BEGIN
+  SET LOCAL ROLE bot;
+
+  -- Fail-closed: müşteri telefonu set edilmeden hiçbir satır görünmez
+  IF EXISTS (SELECT 1 FROM randevu) OR EXISTS (SELECT 1 FROM musteri) OR EXISTS (SELECT 1 FROM mesaj) THEN
+    RAISE EXCEPTION 'TEST 20 BASARISIZ: oturum degiskeni yokken satir gorundu';
+  END IF;
+
+  PERFORM set_config('app.musteri_telefon', '+905550001122', true);  -- Ali (musteri_id = 1)
+  IF NOT EXISTS (SELECT 1 FROM randevu)
+     OR EXISTS (SELECT 1 FROM randevu WHERE musteri_id <> 1)
+     OR (SELECT count(*) FROM musteri) <> 1
+     OR EXISTS (SELECT 1 FROM v_musteri_son_randevu WHERE musteri_id <> 1) THEN
+    RAISE EXCEPTION 'TEST 20 BASARISIZ: bot baska musterinin satirini gordu';
+  END IF;
+
+  -- Müsaitlik için diğer müşterilerin dolu slotları PII'siz görünür
+  IF (SELECT count(*) FROM v_dolu_slot) <= (SELECT count(*) FROM randevu WHERE durum <> 'IPTAL') THEN
+    RAISE EXCEPTION 'TEST 20 BASARISIZ: v_dolu_slot diger musterilerin slotlarini gostermiyor';
+  END IF;
+
+  -- Araç: stoktaki ve kendi aracı görünür, başkasının aracı görünmez
+  IF NOT EXISTS (SELECT 1 FROM arac WHERE vin = 'VIN11111111111111')
+     OR NOT EXISTS (SELECT 1 FROM arac WHERE vin = 'VIN33333333333333')
+     OR EXISTS (SELECT 1 FROM arac WHERE vin = 'VIN55555555555555') THEN
+    RAISE EXCEPTION 'TEST 20 BASARISIZ: arac RLS yanlis';
+  END IF;
+
+  -- Çalışanın adı / hash'i bot'a kapalı
+  BEGIN
+    PERFORM ad FROM calisan;
+    RAISE EXCEPTION 'TEST 20 BASARISIZ: bot calisan adini okudu';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  RAISE NOTICE '  [PASS] Test 20: Bot yalnizca konustugu musteriyi goruyor (fail-closed)';
+END $$;
+
+-- TEST 21: bot yazma — kendi adına WhatsApp randevusu, yalnızca IPTAL'e çekme
+DO $$
+DECLARE v_id integer; v_n integer;
+BEGIN
+  SET LOCAL ROLE bot;
+  PERFORM set_config('app.musteri_telefon', '+905550001122', true);  -- Ali
+
+  -- Başka müşteri adına randevu eklenemez
+  BEGIN
+    INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, kaynak)
+    VALUES (2, 1, 'TEST_SURUSU', 1, 'VIN11111111111111', '2026-11-18 11:00', '2026-11-18 12:00', 'WHATSAPP');
+    RAISE EXCEPTION 'TEST 21 BASARISIZ: bot baska musteri adina randevu ekledi';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+
+  -- Bot PANEL kaynaklı randevu yazamaz
+  BEGIN
+    INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, kaynak)
+    VALUES (1, 1, 'TEST_SURUSU', 1, 'VIN11111111111111', '2026-11-18 11:00', '2026-11-18 12:00', 'PANEL');
+    RAISE EXCEPTION 'TEST 21 BASARISIZ: bot PANEL kaynakli randevu ekledi';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+
+  -- Geçerli WhatsApp randevusu eklenir
+  INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, kaynak)
+  VALUES (1, 1, 'TEST_SURUSU', 1, 'VIN11111111111111', '2026-11-18 11:00', '2026-11-18 12:00', 'WHATSAPP')
+  RETURNING randevu_id INTO v_id;
+
+  -- RLS'de görünmeyen (başkasına satılmış) araca test sürüşü: trigger admin yetkisiyle görür ve reddeder
+  BEGIN
+    INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, kaynak)
+    VALUES (1, 1, 'TEST_SURUSU', 1, 'VIN55555555555555', '2026-11-19 11:00', '2026-11-19 12:00', 'WHATSAPP');
+    RAISE EXCEPTION 'TEST 21 BASARISIZ: satilmis araca test surusu verildi';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM NOT LIKE '%STOKTA%' THEN RAISE; END IF;
+  END;
+
+  -- Başka durum yazılamaz (yalnızca IPTAL)
+  BEGIN
+    UPDATE randevu SET durum = 'TAMAMLANDI' WHERE randevu_id = v_id;
+    RAISE EXCEPTION 'TEST 21 BASARISIZ: bot durumu TAMAMLANDI yapti';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+
+  -- Durum dışındaki kolonlar güncellenemez
+  BEGIN
+    UPDATE randevu SET notlar = 'x' WHERE randevu_id = v_id;
+    RAISE EXCEPTION 'TEST 21 BASARISIZ: bot notlar kolonunu guncelledi';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+
+  -- Başka müşterinin randevusu iptal edilemez (görünmez, 0 satır)
+  UPDATE randevu SET durum = 'IPTAL' WHERE musteri_id = 2;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'TEST 21 BASARISIZ: bot baska musterinin randevusunu iptal etti'; END IF;
+
+  -- Kendi randevusunu iptal eder
+  UPDATE randevu SET durum = 'IPTAL' WHERE randevu_id = v_id;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  IF v_n <> 1 THEN RAISE EXCEPTION 'TEST 21 BASARISIZ: bot kendi randevusunu iptal edemedi'; END IF;
+
+  -- Mesaj ve müşteri yalnızca kendi kimliğiyle
+  INSERT INTO mesaj (musteri_id, yon, icerik) VALUES (1, 'GELEN', 'Merhaba');
+  BEGIN
+    INSERT INTO mesaj (musteri_id, yon, icerik) VALUES (2, 'GIDEN', 'x');
+    RAISE EXCEPTION 'TEST 21 BASARISIZ: bot baska musteriye mesaj kaydetti';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  BEGIN
+    INSERT INTO musteri (ad, soyad, telefon) VALUES ('Sahte', 'Kayit', '+905009998877');
+    RAISE EXCEPTION 'TEST 21 BASARISIZ: bot baska telefonla musteri acti';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  RAISE NOTICE '  [PASS] Test 21: Bot yalnizca kendi musterisi adina yaziyor, yalnizca IPTAL edebiliyor';
+END $$;
+
+-- TEST 22: personel — tüm operasyonel veriyi görür, şifre hash'ini görmez, katalog/log değiştiremez
+DO $$
+DECLARE v_toplam integer; v_hash text;
+BEGIN
+  SELECT count(*) INTO v_toplam FROM randevu;
+  SET LOCAL ROLE personel;
+
+  IF (SELECT count(*) FROM randevu) <> v_toplam THEN
+    RAISE EXCEPTION 'TEST 22 BASARISIZ: personel tum randevulari goremiyor';
+  END IF;
+  UPDATE randevu SET notlar = 'panelden not' WHERE randevu_id = 1;
+
+  BEGIN
+    PERFORM sifre_hash FROM calisan;
+    RAISE EXCEPTION 'TEST 22 BASARISIZ: personel sifre_hash okudu';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  SELECT sifre_hash INTO v_hash FROM fn_panel_giris('ahmet.s');
+  IF v_hash IS DISTINCT FROM 'hash' THEN
+    RAISE EXCEPTION 'TEST 22 BASARISIZ: fn_panel_giris hash donmedi';
+  END IF;
+
+  BEGIN
+    INSERT INTO model (ad, garanti_yil, garanti_km) VALUES ('Sahte', 1, 1);
+    RAISE EXCEPTION 'TEST 22 BASARISIZ: personel katalog tablosuna yazdi';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  BEGIN
+    UPDATE stok_hareketi SET zaman = now();
+    RAISE EXCEPTION 'TEST 22 BASARISIZ: personel stok hareketi gecmisini degistirdi';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  BEGIN
+    INSERT INTO mesaj (musteri_id, yon, icerik) VALUES (1, 'GIDEN', 'x');
+    RAISE EXCEPTION 'TEST 22 BASARISIZ: personel bot mesaji yazdi';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  RAISE NOTICE '  [PASS] Test 22: Personel yetkileri dogru (hash gizli, katalog ve loglar salt-okunur)';
+END $$;
+
 EOF
 
 echo ""
