@@ -777,6 +777,25 @@
           "columns": [
             "mesaj_id"
           ]
+        },
+        {
+          "name": "idx_mesaj_musteri_zaman",
+          "def": "CREATE INDEX idx_mesaj_musteri_zaman ON public.mesaj USING btree (musteri_id, zaman DESC)",
+          "table": "public.mesaj",
+          "columns": [
+            "musteri_id",
+            "zaman"
+          ]
+        },
+        {
+          "name": "idx_mesaj_zaman",
+          "def": "CREATE INDEX idx_mesaj_zaman ON public.mesaj USING btree (zaman) INCLUDE (musteri_id, yon)",
+          "table": "public.mesaj",
+          "columns": [
+            "zaman",
+            "musteri_id",
+            "yon"
+          ]
         }
       ],
       "constraints": [
@@ -875,6 +894,15 @@
           "table": "public.arac",
           "columns": [
             "plaka"
+          ]
+        },
+        {
+          "name": "idx_arac_sube_durum",
+          "def": "CREATE INDEX idx_arac_sube_durum ON public.arac USING btree (sube_id, durum)",
+          "table": "public.arac",
+          "columns": [
+            "sube_id",
+            "durum"
           ]
         }
       ],
@@ -1036,6 +1064,26 @@
           "table": "public.stok_hareketi",
           "columns": [
             "hareket_id"
+          ]
+        },
+        {
+          "name": "idx_stok_hareketi_arac_zaman",
+          "def": "CREATE INDEX idx_stok_hareketi_arac_zaman ON public.stok_hareketi USING btree (arac_vin, zaman)",
+          "table": "public.stok_hareketi",
+          "columns": [
+            "arac_vin",
+            "zaman"
+          ]
+        },
+        {
+          "name": "idx_stok_hareketi_tur_zaman",
+          "def": "CREATE INDEX idx_stok_hareketi_tur_zaman ON public.stok_hareketi USING btree (hareket_turu, zaman) INCLUDE (arac_vin, kaynak_sube_id)",
+          "table": "public.stok_hareketi",
+          "columns": [
+            "hareket_turu",
+            "zaman",
+            "arac_vin",
+            "kaynak_sube_id"
           ]
         }
       ],
@@ -1413,6 +1461,35 @@
             "musteri_id",
             "tsrange"
           ]
+        },
+        {
+          "name": "idx_randevu_tur_durum_baslangic",
+          "def": "CREATE INDEX idx_randevu_tur_durum_baslangic ON public.randevu USING btree (tur_kodu, durum, baslangic)",
+          "table": "public.randevu",
+          "columns": [
+            "tur_kodu",
+            "durum",
+            "baslangic"
+          ]
+        },
+        {
+          "name": "idx_randevu_sube_baslangic",
+          "def": "CREATE INDEX idx_randevu_sube_baslangic ON public.randevu USING btree (sube_id, baslangic) INCLUDE (durum, tur_kodu)",
+          "table": "public.randevu",
+          "columns": [
+            "sube_id",
+            "baslangic",
+            "durum",
+            "tur_kodu"
+          ]
+        },
+        {
+          "name": "idx_randevu_arac_vin",
+          "def": "CREATE INDEX idx_randevu_arac_vin ON public.randevu USING btree (arac_vin) WHERE (arac_vin IS NOT NULL)",
+          "table": "public.randevu",
+          "columns": [
+            "arac_vin"
+          ]
         }
       ],
       "constraints": [
@@ -1657,6 +1734,14 @@
           "table": "public.servis_kaydi",
           "columns": [
             "teslim_randevu_id"
+          ]
+        },
+        {
+          "name": "idx_servis_kaydi_acik_tahmin",
+          "def": "CREATE INDEX idx_servis_kaydi_acik_tahmin ON public.servis_kaydi USING btree (tahmini_teslim_tarihi) WHERE (teslim_randevu_id IS NULL)",
+          "table": "public.servis_kaydi",
+          "columns": [
+            "tahmini_teslim_tarihi"
           ]
         }
       ],
@@ -1914,6 +1999,26 @@
           "columns": [
             "islem_id"
           ]
+        },
+        {
+          "name": "idx_servis_islem_kayit_id",
+          "def": "CREATE INDEX idx_servis_islem_kayit_id ON public.servis_islem USING btree (servis_kaydi_id) INCLUDE (odeme_kaynagi, ucret)",
+          "table": "public.servis_islem",
+          "columns": [
+            "servis_kaydi_id",
+            "odeme_kaynagi",
+            "ucret"
+          ]
+        },
+        {
+          "name": "idx_servis_islem_garanti",
+          "def": "CREATE INDEX idx_servis_islem_garanti ON public.servis_islem USING btree (odeme_kaynagi) INCLUDE (servis_kaydi_id, ucret) WHERE ((odeme_kaynagi)::text = 'GARANTI'::text)",
+          "table": "public.servis_islem",
+          "columns": [
+            "odeme_kaynagi",
+            "servis_kaydi_id",
+            "ucret"
+          ]
         }
       ],
       "constraints": [
@@ -2142,6 +2247,430 @@
             "dosya_no"
           ]
         }
+      ]
+    },
+    {
+      "name": "public.v_musteri_son_randevu",
+      "type": "VIEW",
+      "columns": [
+        {
+          "name": "musteri_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "randevu_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "tur_kodu",
+          "type": "varchar(32)",
+          "nullable": true
+        },
+        {
+          "name": "tur_adi",
+          "type": "varchar(64)",
+          "nullable": true
+        },
+        {
+          "name": "sube_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "sehir",
+          "type": "varchar(64)",
+          "nullable": true
+        },
+        {
+          "name": "sube_adi",
+          "type": "varchar(128)",
+          "nullable": true
+        },
+        {
+          "name": "baslangic",
+          "type": "timestamp without time zone",
+          "nullable": true
+        },
+        {
+          "name": "durum",
+          "type": "varchar(16)",
+          "nullable": true
+        }
+      ],
+      "def": "CREATE VIEW v_musteri_son_randevu AS (\n SELECT DISTINCT ON (r.musteri_id) r.musteri_id,\n    r.randevu_id,\n    r.tur_kodu,\n    rt.ad AS tur_adi,\n    r.sube_id,\n    s.sehir,\n    s.ad AS sube_adi,\n    r.baslangic,\n    r.durum\n   FROM ((randevu r\n     JOIN randevu_turu rt ON (((rt.tur_kodu)::text = (r.tur_kodu)::text)))\n     JOIN sube s ON ((s.sube_id = r.sube_id)))\n  WHERE ((r.durum)::text \u003c\u003e 'IPTAL'::text)\n  ORDER BY r.musteri_id, r.baslangic DESC, r.randevu_id DESC\n)",
+      "referenced_tables": [
+        "public.randevu",
+        "public.randevu_turu",
+        "public.sube"
+      ]
+    },
+    {
+      "name": "public.v_servis_durumu",
+      "type": "VIEW",
+      "columns": [
+        {
+          "name": "servis_kaydi_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "sube_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "arac_vin",
+          "type": "varchar(17)",
+          "nullable": true
+        },
+        {
+          "name": "musteri_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "sorumlu_calisan_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "sebep",
+          "type": "varchar(10)",
+          "nullable": true
+        },
+        {
+          "name": "giris_kilometresi",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "giris_zamani",
+          "type": "timestamp without time zone",
+          "nullable": true
+        },
+        {
+          "name": "son_durum",
+          "type": "varchar(32)",
+          "nullable": true
+        },
+        {
+          "name": "son_durum_zamani",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "kapandi_mi",
+          "type": "boolean",
+          "nullable": true
+        },
+        {
+          "name": "tahmini_teslim_tarihi",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "kalan_gun",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "gecikti_mi",
+          "type": "boolean",
+          "nullable": true
+        },
+        {
+          "name": "toplam_masraf",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "musteri_payi",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "garanti_payi",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "sigorta_payi",
+          "type": "numeric",
+          "nullable": true
+        }
+      ],
+      "def": "CREATE VIEW v_servis_durumu AS (\n SELECT sk.servis_kaydi_id,\n    r.sube_id,\n    r.arac_vin,\n    r.musteri_id,\n    sk.sorumlu_calisan_id,\n    sk.sebep,\n    sk.giris_kilometresi,\n    r.baslangic AS giris_zamani,\n    son.durum AS son_durum,\n    son.zaman AS son_durum_zamani,\n    ((sk.teslim_randevu_id IS NOT NULL) OR (NOT ((son.durum)::text IS DISTINCT FROM 'TAMAMLANDI'::text))) AS kapandi_mi,\n    sk.tahmini_teslim_tarihi,\n    (sk.tahmini_teslim_tarihi - CURRENT_DATE) AS kalan_gun,\n    (COALESCE((sk.tahmini_teslim_tarihi \u003c CURRENT_DATE), false) AND (sk.teslim_randevu_id IS NULL) AND ((son.durum)::text IS DISTINCT FROM 'TAMAMLANDI'::text)) AS gecikti_mi,\n    COALESCE(m.toplam_masraf, (0)::numeric) AS toplam_masraf,\n    COALESCE(m.musteri_payi, (0)::numeric) AS musteri_payi,\n    COALESCE(m.garanti_payi, (0)::numeric) AS garanti_payi,\n    COALESCE(m.sigorta_payi, (0)::numeric) AS sigorta_payi\n   FROM (((servis_kaydi sk\n     JOIN randevu r ON ((r.randevu_id = sk.acilis_randevu_id)))\n     LEFT JOIN LATERAL ( SELECT g.durum,\n            g.zaman\n           FROM servis_durum_gecmisi g\n          WHERE (g.servis_kaydi_id = sk.servis_kaydi_id)\n          ORDER BY g.zaman DESC\n         LIMIT 1) son ON (true))\n     LEFT JOIN LATERAL ( SELECT sum(i.ucret) AS toplam_masraf,\n            sum(i.ucret) FILTER (WHERE ((i.odeme_kaynagi)::text = 'MUSTERI'::text)) AS musteri_payi,\n            sum(i.ucret) FILTER (WHERE ((i.odeme_kaynagi)::text = 'GARANTI'::text)) AS garanti_payi,\n            sum(i.ucret) FILTER (WHERE ((i.odeme_kaynagi)::text = 'SIGORTA'::text)) AS sigorta_payi\n           FROM servis_islem i\n          WHERE (i.servis_kaydi_id = sk.servis_kaydi_id)) m ON (true))\n)",
+      "referenced_tables": [
+        "'TAMAMLANDI'::text",
+        "public.servis_kaydi",
+        "public.randevu",
+        "LATERAL",
+        "public.servis_durum_gecmisi",
+        "public.servis_islem"
+      ]
+    },
+    {
+      "name": "public.v_arac_garanti_durumu",
+      "type": "VIEW",
+      "columns": [
+        {
+          "name": "vin",
+          "type": "varchar(17)",
+          "nullable": true
+        },
+        {
+          "name": "plaka",
+          "type": "varchar(16)",
+          "nullable": true
+        },
+        {
+          "name": "musteri_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "model_adi",
+          "type": "varchar(128)",
+          "nullable": true
+        },
+        {
+          "name": "garanti_baslangic",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "garanti_bitis",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "garanti_km",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "son_bilinen_km",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "son_bakim_tarihi",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "sonraki_bakim_son_tarih",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "sonraki_bakim_son_km",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "garanti_durumu",
+          "type": "text",
+          "nullable": true
+        }
+      ],
+      "def": "CREATE VIEW v_arac_garanti_durumu AS (\n WITH satis AS (\n         SELECT stok_hareketi.arac_vin,\n            (min(stok_hareketi.zaman))::timestamp without time zone AS satis_zamani\n           FROM stok_hareketi\n          WHERE ((stok_hareketi.hareket_turu)::text = 'SATIS'::text)\n          GROUP BY stok_hareketi.arac_vin\n        ), gecerli_servis AS (\n         SELECT r.arac_vin,\n            r.baslangic,\n            sk.giris_kilometresi AS km,\n            sk.sebep\n           FROM (servis_kaydi sk\n             JOIN randevu r ON ((r.randevu_id = sk.acilis_randevu_id)))\n          WHERE (((r.durum)::text \u003c\u003e ALL ((ARRAY['IPTAL'::character varying, 'GELMEDI'::character varying])::text[])) AND (r.baslangic \u003c= LOCALTIMESTAMP))\n        ), bakim_zinciri AS (\n         SELECT satis.arac_vin,\n            satis.satis_zamani AS zaman,\n            0 AS km\n           FROM satis\n        UNION ALL\n         SELECT g.arac_vin,\n            g.baslangic,\n            g.km\n           FROM (gecerli_servis g\n             JOIN satis s_1 ON (((s_1.arac_vin)::text = (g.arac_vin)::text)))\n          WHERE (((g.sebep)::text = 'BAKIM'::text) AND (g.baslangic \u003e= s_1.satis_zamani))\n        ), bakim_araliklari AS (\n         SELECT bakim_zinciri.arac_vin,\n            bakim_zinciri.zaman,\n            bakim_zinciri.km,\n            lag(bakim_zinciri.zaman) OVER w AS onceki_zaman,\n            lag(bakim_zinciri.km) OVER w AS onceki_km\n           FROM bakim_zinciri\n          WINDOW w AS (PARTITION BY bakim_zinciri.arac_vin ORDER BY bakim_zinciri.zaman)\n        ), bakim_ozet AS (\n         SELECT bakim_araliklari.arac_vin,\n            max(bakim_araliklari.zaman) AS son_bakim_zamani,\n            (array_agg(bakim_araliklari.km ORDER BY bakim_araliklari.zaman DESC))[1] AS son_bakim_km,\n            COALESCE(bool_or(((bakim_araliklari.zaman \u003e (bakim_araliklari.onceki_zaman + '1 year'::interval)) OR ((bakim_araliklari.km - bakim_araliklari.onceki_km) \u003e 15000))), false) AS gecmiste_aksatildi\n           FROM bakim_araliklari\n          GROUP BY bakim_araliklari.arac_vin\n        ), son_km AS (\n         SELECT g.arac_vin,\n            max(g.km) AS son_bilinen_km\n           FROM gecerli_servis g\n          GROUP BY g.arac_vin\n        )\n SELECT a.vin,\n    a.plaka,\n    a.musteri_id,\n    m.ad AS model_adi,\n    (s.satis_zamani)::date AS garanti_baslangic,\n    ((s.satis_zamani + make_interval(years =\u003e (m.garanti_yil)::integer)))::date AS garanti_bitis,\n    m.garanti_km,\n    COALESCE(k.son_bilinen_km, 0) AS son_bilinen_km,\n    (b.son_bakim_zamani)::date AS son_bakim_tarihi,\n    ((b.son_bakim_zamani + '1 year'::interval))::date AS sonraki_bakim_son_tarih,\n    (b.son_bakim_km + 15000) AS sonraki_bakim_son_km,\n        CASE\n            WHEN (LOCALTIMESTAMP \u003e (s.satis_zamani + make_interval(years =\u003e (m.garanti_yil)::integer))) THEN 'SURE_DOLDU'::text\n            WHEN (COALESCE(k.son_bilinen_km, 0) \u003e m.garanti_km) THEN 'KM_ASILDI'::text\n            WHEN (b.gecmiste_aksatildi OR (LOCALTIMESTAMP \u003e (b.son_bakim_zamani + '1 year'::interval)) OR ((COALESCE(k.son_bilinen_km, 0) - b.son_bakim_km) \u003e 15000)) THEN 'BAKIM_AKSATILDI'::text\n            ELSE 'GECERLI'::text\n        END AS garanti_durumu\n   FROM (((((arac a\n     JOIN satis s ON (((s.arac_vin)::text = (a.vin)::text)))\n     JOIN versiyon v ON ((v.versiyon_id = a.versiyon_id)))\n     JOIN model m ON ((m.model_id = v.model_id)))\n     JOIN bakim_ozet b ON (((b.arac_vin)::text = (a.vin)::text)))\n     LEFT JOIN son_km k ON (((k.arac_vin)::text = (a.vin)::text)))\n)",
+      "referenced_tables": [
+        "public.stok_hareketi",
+        "public.servis_kaydi",
+        "public.randevu",
+        "gecerli_servis",
+        "bakim_zinciri",
+        "bakim_araliklari",
+        "public.arac",
+        "public.versiyon",
+        "public.model",
+        "bakim_ozet",
+        "son_km"
+      ]
+    },
+    {
+      "name": "public.v_rapor_musteri",
+      "type": "VIEW",
+      "columns": [
+        {
+          "name": "musteri_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "ad",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "soyad",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "telefon",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "kayit_zamani",
+          "type": "timestamp with time zone",
+          "nullable": true
+        }
+      ],
+      "def": "CREATE VIEW v_rapor_musteri AS (\n SELECT musteri_id,\n    fn_maskele_ad((ad)::text) AS ad,\n    fn_maskele_ad((soyad)::text) AS soyad,\n    fn_maskele_telefon((telefon)::text) AS telefon,\n    kayit_zamani\n   FROM musteri mu\n)",
+      "referenced_tables": [
+        "public.musteri"
+      ]
+    },
+    {
+      "name": "public.v_rapor_randevu",
+      "type": "VIEW",
+      "columns": [
+        {
+          "name": "randevu_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "baslangic",
+          "type": "timestamp without time zone",
+          "nullable": true
+        },
+        {
+          "name": "bitis",
+          "type": "timestamp without time zone",
+          "nullable": true
+        },
+        {
+          "name": "durum",
+          "type": "varchar(16)",
+          "nullable": true
+        },
+        {
+          "name": "kaynak",
+          "type": "varchar(10)",
+          "nullable": true
+        },
+        {
+          "name": "tur_kodu",
+          "type": "varchar(32)",
+          "nullable": true
+        },
+        {
+          "name": "tur_adi",
+          "type": "varchar(64)",
+          "nullable": true
+        },
+        {
+          "name": "departman",
+          "type": "varchar(10)",
+          "nullable": true
+        },
+        {
+          "name": "sube_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "sehir",
+          "type": "varchar(64)",
+          "nullable": true
+        },
+        {
+          "name": "sube_adi",
+          "type": "varchar(128)",
+          "nullable": true
+        },
+        {
+          "name": "calisan_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "calisan",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "arac_vin",
+          "type": "varchar(17)",
+          "nullable": true
+        },
+        {
+          "name": "model_adi",
+          "type": "varchar(128)",
+          "nullable": true
+        },
+        {
+          "name": "paket_adi",
+          "type": "varchar(128)",
+          "nullable": true
+        },
+        {
+          "name": "musteri_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "musteri",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "musteri_telefon",
+          "type": "text",
+          "nullable": true
+        }
+      ],
+      "def": "CREATE VIEW v_rapor_randevu AS (\n SELECT r.randevu_id,\n    r.baslangic,\n    r.bitis,\n    r.durum,\n    r.kaynak,\n    r.tur_kodu,\n    rt.ad AS tur_adi,\n    rt.departman,\n    s.sube_id,\n    s.sehir,\n    s.ad AS sube_adi,\n    c.calisan_id,\n    (((c.ad)::text || ' '::text) || (c.soyad)::text) AS calisan,\n    r.arac_vin,\n    mo.ad AS model_adi,\n    ve.paket_adi,\n    r.musteri_id,\n    ((fn_maskele_ad((mu.ad)::text) || ' '::text) || fn_maskele_ad((mu.soyad)::text)) AS musteri,\n    fn_maskele_telefon((mu.telefon)::text) AS musteri_telefon\n   FROM (((((((randevu r\n     JOIN randevu_turu rt ON (((rt.tur_kodu)::text = (r.tur_kodu)::text)))\n     JOIN sube s ON ((s.sube_id = r.sube_id)))\n     JOIN calisan c ON ((c.calisan_id = r.calisan_id)))\n     JOIN musteri mu ON ((mu.musteri_id = r.musteri_id)))\n     LEFT JOIN arac a ON (((a.vin)::text = (r.arac_vin)::text)))\n     LEFT JOIN versiyon ve ON ((ve.versiyon_id = COALESCE(a.versiyon_id, r.versiyon_id))))\n     LEFT JOIN model mo ON ((mo.model_id = ve.model_id)))\n)",
+      "referenced_tables": [
+        "public.randevu",
+        "public.randevu_turu",
+        "public.sube",
+        "public.calisan",
+        "public.musteri",
+        "public.arac",
+        "public.versiyon",
+        "public.model"
+      ]
+    },
+    {
+      "name": "public.v_dolu_slot",
+      "type": "VIEW",
+      "columns": [
+        {
+          "name": "sube_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "calisan_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "arac_vin",
+          "type": "varchar(17)",
+          "nullable": true
+        },
+        {
+          "name": "baslangic",
+          "type": "timestamp without time zone",
+          "nullable": true
+        },
+        {
+          "name": "bitis",
+          "type": "timestamp without time zone",
+          "nullable": true
+        }
+      ],
+      "def": "CREATE VIEW v_dolu_slot AS (\n SELECT sube_id,\n    calisan_id,\n    arac_vin,\n    baslangic,\n    bitis\n   FROM randevu r\n  WHERE ((durum)::text \u003c\u003e 'IPTAL'::text)\n)",
+      "referenced_tables": [
+        "public.randevu"
       ]
     }
   ],
@@ -3650,6 +4179,30 @@
       "name": "public.fn_randevu_dogrula",
       "return_type": "trigger",
       "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.fn_maskele_telefon",
+      "return_type": "text",
+      "arguments": "p_telefon text",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.fn_maskele_ad",
+      "return_type": "text",
+      "arguments": "p_ad text",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.fn_aktif_musteri_id",
+      "return_type": "int4",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.fn_panel_giris",
+      "return_type": "record",
+      "arguments": "p_kullanici_adi text",
       "type": "FUNCTION"
     }
   ],

@@ -24,6 +24,12 @@
 | [public.servis_islem](public.servis_islem.md) | 6 |  | BASE TABLE |
 | [public.sigorta_sirketi](public.sigorta_sirketi.md) | 4 |  | BASE TABLE |
 | [public.servis_sigorta](public.servis_sigorta.md) | 5 |  | BASE TABLE |
+| [public.v_musteri_son_randevu](public.v_musteri_son_randevu.md) | 9 |  | VIEW |
+| [public.v_servis_durumu](public.v_servis_durumu.md) | 18 |  | VIEW |
+| [public.v_arac_garanti_durumu](public.v_arac_garanti_durumu.md) | 12 |  | VIEW |
+| [public.v_rapor_musteri](public.v_rapor_musteri.md) | 5 |  | VIEW |
+| [public.v_rapor_randevu](public.v_rapor_randevu.md) | 19 |  | VIEW |
+| [public.v_dolu_slot](public.v_dolu_slot.md) | 5 |  | VIEW |
 
 ## Stored procedures and functions
 
@@ -219,6 +225,10 @@
 | public.gbt_bool_same | internal | gbtreekey2, gbtreekey2, internal | FUNCTION |
 | public.fn_servis_islem_garanti_kontrol | trigger |  | FUNCTION |
 | public.fn_randevu_dogrula | trigger |  | FUNCTION |
+| public.fn_maskele_telefon | text | p_telefon text | FUNCTION |
+| public.fn_maskele_ad | text | p_ad text | FUNCTION |
+| public.fn_aktif_musteri_id | int4 |  | FUNCTION |
+| public.fn_panel_giris | record | p_kullanici_adi text | FUNCTION |
 
 ## Relations
 

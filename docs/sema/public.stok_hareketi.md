@@ -29,6 +29,8 @@
 | Name | Definition |
 | ---- | ---------- |
 | stok_hareketi_pkey | CREATE UNIQUE INDEX stok_hareketi_pkey ON public.stok_hareketi USING btree (hareket_id) |
+| idx_stok_hareketi_arac_zaman | CREATE INDEX idx_stok_hareketi_arac_zaman ON public.stok_hareketi USING btree (arac_vin, zaman) |
+| idx_stok_hareketi_tur_zaman | CREATE INDEX idx_stok_hareketi_tur_zaman ON public.stok_hareketi USING btree (hareket_turu, zaman) INCLUDE (arac_vin, kaynak_sube_id) |
 
 ## Relations
 

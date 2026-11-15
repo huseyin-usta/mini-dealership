@@ -44,6 +44,9 @@
 | randevu_calisan_id_tsrange_excl | CREATE INDEX randevu_calisan_id_tsrange_excl ON public.randevu USING gist (calisan_id, tsrange(baslangic, bitis)) WHERE ((durum)::text <> 'IPTAL'::text) |
 | randevu_arac_vin_tsrange_excl | CREATE INDEX randevu_arac_vin_tsrange_excl ON public.randevu USING gist (arac_vin, tsrange(baslangic, bitis)) WHERE ((arac_vin IS NOT NULL) AND ((durum)::text <> 'IPTAL'::text)) |
 | randevu_musteri_id_tsrange_excl | CREATE INDEX randevu_musteri_id_tsrange_excl ON public.randevu USING gist (musteri_id, tsrange(baslangic, bitis)) WHERE ((durum)::text <> 'IPTAL'::text) |
+| idx_randevu_tur_durum_baslangic | CREATE INDEX idx_randevu_tur_durum_baslangic ON public.randevu USING btree (tur_kodu, durum, baslangic) |
+| idx_randevu_sube_baslangic | CREATE INDEX idx_randevu_sube_baslangic ON public.randevu USING btree (sube_id, baslangic) INCLUDE (durum, tur_kodu) |
+| idx_randevu_arac_vin | CREATE INDEX idx_randevu_arac_vin ON public.randevu USING btree (arac_vin) WHERE (arac_vin IS NOT NULL) |
 
 ## Triggers
 

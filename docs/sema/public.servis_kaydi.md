@@ -36,6 +36,7 @@
 | servis_kaydi_pkey | CREATE UNIQUE INDEX servis_kaydi_pkey ON public.servis_kaydi USING btree (servis_kaydi_id) |
 | servis_kaydi_acilis_randevu_id_key | CREATE UNIQUE INDEX servis_kaydi_acilis_randevu_id_key ON public.servis_kaydi USING btree (acilis_randevu_id) |
 | servis_kaydi_teslim_randevu_id_key | CREATE UNIQUE INDEX servis_kaydi_teslim_randevu_id_key ON public.servis_kaydi USING btree (teslim_randevu_id) |
+| idx_servis_kaydi_acik_tahmin | CREATE INDEX idx_servis_kaydi_acik_tahmin ON public.servis_kaydi USING btree (tahmini_teslim_tarihi) WHERE (teslim_randevu_id IS NULL) |
 
 ## Relations
 

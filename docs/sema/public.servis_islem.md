@@ -25,6 +25,8 @@
 | Name | Definition |
 | ---- | ---------- |
 | servis_islem_pkey | CREATE UNIQUE INDEX servis_islem_pkey ON public.servis_islem USING btree (islem_id) |
+| idx_servis_islem_kayit_id | CREATE INDEX idx_servis_islem_kayit_id ON public.servis_islem USING btree (servis_kaydi_id) INCLUDE (odeme_kaynagi, ucret) |
+| idx_servis_islem_garanti | CREATE INDEX idx_servis_islem_garanti ON public.servis_islem USING btree (odeme_kaynagi) INCLUDE (servis_kaydi_id, ucret) WHERE ((odeme_kaynagi)::text = 'GARANTI'::text) |
 
 ## Triggers
 

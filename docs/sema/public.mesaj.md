@@ -23,6 +23,8 @@
 | Name | Definition |
 | ---- | ---------- |
 | mesaj_pkey | CREATE UNIQUE INDEX mesaj_pkey ON public.mesaj USING btree (mesaj_id) |
+| idx_mesaj_musteri_zaman | CREATE INDEX idx_mesaj_musteri_zaman ON public.mesaj USING btree (musteri_id, zaman DESC) |
+| idx_mesaj_zaman | CREATE INDEX idx_mesaj_zaman ON public.mesaj USING btree (zaman) INCLUDE (musteri_id, yon) |
 
 ## Relations
 

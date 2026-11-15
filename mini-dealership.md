@@ -219,13 +219,14 @@ Rehberin özellikle istediği ve projede göstereceğimiz şeyler:
 
 ## Durum ve takvim
 
-- **Hazır olan:** EER ve ilişkisel şema tamamlandı, 20/20 DDL tablosu ve kritik
-  doğrulama trigger'ları (garanti, randevu) PostgreSQL üzerinde doğrulandı;
-  rapor ve maskeli view'lar, veritabanı rolleri, RLS ve GRANT/REVOKE yetkileri
-  otomatik testlerle doğrulandı; başka bir projede çalışan WhatsApp bot
-  altyapısı (Baileys + Gemini) ve bu dokümandaki domain ve iş kuralları
-- **Yapılacak:** 250.000 satırlık veri üretimi, sorgular ve indeks analizi,
-  Java backend, panel
+- **Hazır olan:** Veritabanı katmanı tamamen tamamlandı (EER ve ilişkisel şema,
+  20/20 DDL tablosu, garanti/randevu trigger'ları, rapor ve maskeli view'lar,
+  roller/RLS/GRANT-REVOKE, 22 senaryoluk otomatik DB testleri, 453k+ ana satırlık
+  sentetik veri üretici, 7 analitik sorgu ve 11 indeksle `EXPLAIN ANALYZE` analizi);
+  başka bir projede çalışan WhatsApp bot altyapısı (Baileys + Gemini) ve bu
+  dokümandaki domain ve iş kuralları
+- **Yapılacak:** Java backend (JDBC), panel (HTML/JS), WhatsApp köprüsü entegrasyonu,
+  Docker Compose
 - **Takvim:** ara rapor 19 Ekim 2026, son rapor 3 Aralık 2026, dönem sonunda
   demo
 - **Ekip:** rehbere göre 2–3 kişi; herkes tasarımdan koda her aşamada görev
