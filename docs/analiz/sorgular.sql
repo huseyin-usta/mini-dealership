@@ -45,7 +45,7 @@ SELECT m.ad AS model_adi,
   LEFT JOIN test_surusleri t    ON t.model_id = m.model_id
   LEFT JOIN satislar s          ON s.model_id = m.model_id
   LEFT JOIN test_sonrasi_alan ts ON ts.model_id = m.model_id
- ORDER BY test_sonrasi_donusum_yuzdesi ASC NULLS FIRST;
+ ORDER BY test_sirasi ASC;
 
 -- 2. Şube ve Departman Bazında Aylık Çalışan Performans Sıralaması (4-way JOIN + HAVING + RANK)
 WITH aylik AS (
@@ -106,23 +106,35 @@ SELECT sk.sebep,
 HAVING sum(si.ucret) > 0
  ORDER BY toplam_fatura DESC;
 
--- 5. Gerçekten Geciken Açık Servis Kayıtları (Senaryo A: Tamiri Yetişmeyenler, TESLIME_HAZIR Hariç)
-SELECT sd.servis_kaydi_id,
-       s.ad AS sube,
-       mo.ad AS model,
-       sd.son_durum,
-       sd.tahmini_teslim_tarihi,
-       sd.toplam_masraf AS biriken_masraf
-  FROM v_servis_durumu sd
-  JOIN sube s      ON s.sube_id = sd.sube_id
-  JOIN arac a      ON a.vin = sd.arac_vin
-  JOIN versiyon v  ON v.versiyon_id = a.versiyon_id
-  JOIN model mo    ON mo.model_id = v.model_id
- WHERE NOT sd.kapandi_mi
-   AND sd.son_durum IS DISTINCT FROM 'TESLIME_HAZIR'
-   AND sd.tahmini_teslim_tarihi < '2026-11-15'
- ORDER BY sd.tahmini_teslim_tarihi ASC
- LIMIT 50;
+-- 5. Şube Bazında Servis Teslim Zamanlaması ve Gecikme Analizi (ARIZA + KAZA, CTE + 5-way JOIN + FILTER)
+-- Not: Demo ad-hoc örneğinde şube+model kırılımı için SELECT ve GROUP BY'a `m.ad` eklenebilir.
+WITH hazir AS (
+    SELECT sk.servis_kaydi_id,
+           r.sube_id,
+           m.ad AS model_adi,
+           sk.tahmini_teslim_tarihi,
+           min(g.zaman)::date AS hazir_tarihi
+      FROM servis_kaydi sk
+      JOIN randevu r              ON r.randevu_id = sk.acilis_randevu_id
+      JOIN arac a                 ON a.vin = r.arac_vin
+      JOIN versiyon v             ON v.versiyon_id = a.versiyon_id
+      JOIN model m                ON m.model_id = v.model_id
+      JOIN servis_durum_gecmisi g ON g.servis_kaydi_id = sk.servis_kaydi_id
+     WHERE g.durum = 'TESLIME_HAZIR'
+       AND sk.tahmini_teslim_tarihi IS NOT NULL
+       AND sk.sebep IN ('ARIZA', 'KAZA')
+     GROUP BY sk.servis_kaydi_id, r.sube_id, m.ad, sk.tahmini_teslim_tarihi
+)
+SELECT s.ad AS sube,
+       count(*) AS toplam_onarim,
+       round(count(*) FILTER (WHERE hazir_tarihi <= tahmini_teslim_tarihi)::numeric / count(*) * 100, 2) AS zamaninda_yuzde,
+       round(avg(hazir_tarihi - tahmini_teslim_tarihi)::numeric, 2) AS ort_sapma_gun,
+       count(*) FILTER (WHERE hazir_tarihi > tahmini_teslim_tarihi) AS geciken_adet,
+       round(avg(hazir_tarihi - tahmini_teslim_tarihi) FILTER (WHERE hazir_tarihi > tahmini_teslim_tarihi)::numeric, 2) AS geciken_ort_gecikme_gun
+  FROM hazir h
+  JOIN sube s ON s.sube_id = h.sube_id
+ GROUP BY s.ad
+ ORDER BY zamaninda_yuzde ASC;
 
 -- 6. Garantisi Geçerli Araçlarda Arıza Masraflarının Garanti Karşılama Oranı (View + 4-way JOIN + HAVING)
 SELECT gd.model_adi,

@@ -30,7 +30,7 @@ Bu doküman, `veri/uret.py` ile üretilen **453.096 ana işlem satırı** (topla
 | **Sorgu 2** | Şube & Departman Aylık Performans | `3.04 ms` | **`0.35 ms`** | **8.7x** | `1.288` → `73` blok (%94 az) |
 | **Sorgu 3** | 216k Mesajda Müşteri Geçmişi | `4.82 ms` | **`0.50 ms`** | **9.6x** | `3.045` → `230` blok (%92 az) |
 | **Sorgu 4** | Şube & Sebebe Göre Masraf Kırılımı | `7.94 ms` | **`2.91 ms`** | **2.7x** | `3.482` → `794` blok (%77 az) |
-| **Sorgu 5** | Gerçekten Geciken Açık Servisler | `135.12 ms` | **`34.84 ms`** | **3.9x** | Tam tarama yerine partial index |
+| **Sorgu 5** | Şube Servis Teslim Zamanlaması & Gecikme | — | **`22.44 ms`** | — | Hash Join + `shared hit=2.608` (4.440 onarım) |
 | **Sorgu 6** | Garantili Araçlarda Karşılama Oranı | `111.40 ms` | **`108.81 ms`** | ~1.02x | CPU-bound (LAG window function) |
 | **Sorgu 7** | Model Bazında Erken Garanti Bozulma | — | **`97.18 ms`** | — | Tüm satılan araçlarda `LAG()` + `shared hit=1.983` |
 
@@ -58,7 +58,7 @@ Bu doküman, `veri/uret.py` ile üretilen **453.096 ana işlem satırı** (topla
 7. **`idx_servis_islem_garanti ON servis_islem (odeme_kaynagi) INCLUDE (servis_kaydi_id, ucret) WHERE odeme_kaynagi = 'GARANTI'`**
    - **Neden partial?** Garanti işlemleri tüm işlemlerin yalnızca ~%5'idir. Partial indeks dev tablo yerine ufacık bir indeksi tarar.
 8. **`idx_servis_kaydi_acik_tahmin ON servis_kaydi (tahmini_teslim_tarihi) WHERE teslim_randevu_id IS NULL`**
-   - **Neden partial?** Kapanmış 30k+ eski servis kaydını indekslemez; yalnızca halihazırda serviste bekleyen açık kayıtları indeksler. Sorgu 5 süresini `135.12 ms`'den `34.84 ms`'ye (~3.9x) düşürmüştür.
+   - **Neden partial?** Kapanmış 30k+ eski servis kaydını indekslemez; yalnızca halihazırda serviste bekleyen açık kayıtları indeksler. Paneldeki "Geciken açık servisler" ekranı (`v_servis_durumu` üzerinde `135.12 ms` → `34.84 ms`, ~3.9x hızlanma) için kullanılmaktadır.
 
 ### D. `stok_hareketi` ve `arac`
 9. **`idx_stok_hareketi_arac_zaman ON stok_hareketi (arac_vin, zaman)`**
@@ -79,13 +79,13 @@ Aşağıdaki çıktılar [sorgular.sql](file:///Users/tequu/mini-dealership/docs
 | model_adi | test_surusu | toplam_satis | test_sonrasi_alan_musteri | test_sonrasi_donusum_yuzdesi | toplam_satis_test_orani_yuzde | test_sirasi |
 |---|---:|---:|---:|---:|---:|---:|
 | Ioniq 5 | 850 | 86 | 48 | 5.65 | 10.12 | 1 |
-| Santa Fe | 324 | 62 | 43 | 13.27 | 19.14 | 8 |
 | Tucson | 847 | 279 | 168 | 19.83 | 32.94 | 2 |
-| Kona | 582 | 187 | 116 | 19.93 | 32.13 | 5 |
-| Elantra | 616 | 272 | 164 | 26.62 | 44.16 | 4 |
 | i20 | 630 | 328 | 182 | 28.89 | 52.06 | 3 |
+| Elantra | 616 | 272 | 164 | 26.62 | 44.16 | 4 |
+| Kona | 582 | 187 | 116 | 19.93 | 32.13 | 5 |
 | Bayon | 545 | 245 | 159 | 29.17 | 44.95 | 6 |
 | i10 | 439 | 225 | 141 | 32.12 | 51.25 | 7 |
+| Santa Fe | 324 | 62 | 43 | 13.27 | 19.14 | 8 |
 
 ### Sorgu 2 — Şube 1 Ekim 2026 Departman Bazında Çalışan Performans Sıralaması
 
@@ -141,14 +141,18 @@ Aşağıdaki çıktılar [sorgular.sql](file:///Users/tequu/mini-dealership/docs
 | ARIZA | 17 | 479750 | 266660 | 55.58 | 213090 | 44.42 | 0 | 0.00 |
 | KAZA | 5 | 173880 | 84400 | 48.54 | 0 | 0.00 | 89480 | 51.46 |
 
-### Sorgu 5 — Gerçekten Geciken Açık Servis Kayıtları (`TESLIME_HAZIR` Hariç)
+### Sorgu 5 — Şube Bazında Servis Teslim Zamanlaması ve Gecikme Analizi (`ARIZA` + `KAZA`)
 
-| servis_kaydi_id | sube | model | son_durum | tahmini_teslim_tarihi | biriken_masraf |
-|---:|---|---|---|---|---:|
-| 32643 | Yenimahalle | i20 | ISLEMDE | 2026-11-04 | 46320 |
-| 32634 | Nilüfer | Ioniq 5 | ISLEMDE | 2026-11-09 | 12650 |
-| 32782 | Yenimahalle | Bayon | ISLEMDE | 2026-11-11 | 43950 |
-| 32293 | Beşiktaş | Bayon | ISLEMDE | 2026-11-13 | 19550 |
+| sube | toplam_onarim | zamaninda_yuzde | ort_sapma_gun | geciken_adet | geciken_ort_gecikme_gun |
+|---|---:|---:|---:|---:|---:|
+| Çankaya | 706 | 58.50 | 0.83 | 293 | 3.47 |
+| Muratpaşa | 409 | 58.68 | 0.89 | 169 | 3.66 |
+| Ataşehir | 530 | 58.68 | 0.68 | 219 | 3.09 |
+| Yenimahalle | 535 | 58.69 | 0.91 | 221 | 3.58 |
+| Beşiktaş | 607 | 60.13 | 0.72 | 242 | 3.41 |
+| Nilüfer | 399 | 60.65 | 0.86 | 157 | 3.80 |
+| Bornova | 525 | 60.76 | 0.68 | 206 | 3.26 |
+| Kadıköy | 729 | 60.77 | 0.68 | 286 | 3.30 |
 
 ### Sorgu 6 — Garantisi Geçerli Araçlarda Arıza Masraflarının Garanti Karşılama Oranı
 
