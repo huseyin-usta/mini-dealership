@@ -113,6 +113,21 @@ Yollar `poc/whatsapp/` altında (handoff'un eski hali yanlış yerden veriyordu)
   gerekiyorsa `gh auth refresh -h github.com -s user`
 - Collaborator ekleme: `gh api -X PUT repos/huseyin-usta/mini-dealership/collaborators/{user}`
 
+## İş bölümü (geliştirme düzeni)
+
+Sahiplik ikiye ayrıldı; `mini-dealership.md`'deki "Görev dağılımı" bölümü
+değiştirilmedi (o örnek taslaktı). Gerçek iş bölümü final raporda commit
+geçmişinden çıkarılacak.
+
+- **Hüseyin — backend tarafı:** API sözleşmesi, Java backend (JDBC, bot mantığı,
+  panel API'leri), WhatsApp köprüsü, transaction yönetimi, Docker Compose.
+- **Şevda — panel tarafı:** panel (HTML/JS) + panel menüleri, Excel raporu.
+- **Ortak ve bitti:** EER/şema/DDL, view'lar, roller/RLS, analitik sorgular ve
+  indeks analizi, veri üretici.
+
+Sıra: API sözleşmesi → backend iskeleti → WhatsApp köprüsü → panel API'leri →
+Docker Compose. Panel, sözleşme dondurulduktan sonra mock ile paralel başlayabilir.
+
 ## Kullanıcı ile çalışma
 
 - İletişim Türkçe. Yanıtlar kısa ve öz olsun; gevezelik yok. Kod, commit ve
