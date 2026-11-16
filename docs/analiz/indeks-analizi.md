@@ -3,7 +3,7 @@
 Bu doküman, `veri/uret.py` ile üretilen **453.096 ana işlem satırı** (toplamda 650.000+ satır) üzerinde PostgreSQL 17 `EXPLAIN (ANALYZE, BUFFERS)` kullanılarak gerçekleştirilen indeks öncesi (**Baseline**) ve indeks sonrası (**Indexed**) sorgu maliyeti analizini içerir.
 
 > [!NOTE]
-> Tüm sorgular [sorgular.sql](file:///Users/tequu/mini-dealership/docs/analiz/sorgular.sql) dosyasında, indeks tanımları ise [500_indeksler.sql](file:///Users/tequu/mini-dealership/db/500_indeksler.sql) dosyasında yer almaktadır.
+> Tüm sorgular [sorgular.sql](sorgular.sql) dosyasında, indeks tanımları ise [500_indeksler.sql](../../db/500_indeksler.sql) dosyasında yer almaktadır.
 
 ---
 
@@ -72,7 +72,7 @@ Bu doküman, `veri/uret.py` ile üretilen **453.096 ana işlem satırı** (topla
 
 ## 4. Analitik Sorgu Çıktıları (453.096 Ana Satır Üzerinden)
 
-Aşağıdaki çıktılar [sorgular.sql](file:///Users/tequu/mini-dealership/docs/analiz/sorgular.sql) dosyasının `veri/uret.py` ile üretilen veri seti üzerindeki gerçek `psql` sonuçlarıdır.
+Aşağıdaki çıktılar [sorgular.sql](sorgular.sql) dosyasının `veri/uret.py` ile üretilen veri seti üzerindeki gerçek `psql` sonuçlarıdır.
 
 ### Sorgu 1 — Model Bazında Test Sürüşü vs Satış Dönüşüm Oranı
 
