@@ -11,7 +11,7 @@ session'lara ve ekip arkadaşına bağlam aktarımı içindir.
 3. `mini-dealership.md` — spec; PDF'lerle uyumlu tutulur (ör. mesai kuralı PDF'e
    göre düzeltildi). Değiştirmeden önce kullanıcıya sor.
 
-## Durum (15 Kasım 2026 itibarıyla)
+## Durum (16 Kasım 2026 itibarıyla)
 
 - GitHub reposu: **github.com/huseyin-usta/mini-dealership** (public, `main`).
   Commit yazarı: `h.usta@etu.edu.tr` (gt-arc maili KULLANILMAZ).
@@ -66,9 +66,10 @@ session'lara ve ekip arkadaşına bağlam aktarımı içindir.
 - **Stil:** PK'lar `GENERATED ALWAYS AS IDENTITY`; `db/` dosyaları sayı önekli
   (10'ar adım, araya 015 gibi dosya girebilir); durum kolonları varchar+CHECK
   (boolean değil); aracın kilometresi tutulmaz — servis kayıtlarından izlenir
-- **Açık karar (kullanıcıya sorulacak):** spec'teki "bizden alınmamış araç
-  servise ilk geldiğinde kaydedilir" kuralı; yeni varsayımla tüm araçlar ağdan
-  kayıtlı — muhtemelen spec'ten çıkarılacak
+- **Karar verildi:** bayi tek markalı olduğu için markanın bütün araçları bayi
+  ağı üzerinden satılır; servise gelen her araç sistemde kayıtlıdır. Eski
+  "bizden alınmamış araç servise ilk geldiğinde kaydedilir" kuralı spec'ten
+  çıkarıldı, ayrı bir araç-kayıt akışı yok
 
 ## Referans repo (salt-okunur, DOKUNMA)
 
