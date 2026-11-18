@@ -94,8 +94,45 @@ INSERT INTO arac (vin, versiyon_id, sube_id, renk, durum, tahmini_varis_tarihi) 
   ('VIN00000000000003', 1, 1, 'Siyah', 'STOKTA', NULL),
   ('VIN00000000000009', 1, 1, 'Mavi',  'YOLDA',  current_date + 10);
 
-INSERT INTO musteri (ad, soyad, telefon) VALUES ('Ali', 'Veli', '+905550001122');
+-- Musteriler: farkli senaryolar icin ayri musteriler (ayni musteri ayni saatte
+-- birden fazla randevuda olamaz; EXCLUDE kisiti)
+INSERT INTO musteri (ad, soyad, telefon) VALUES
+  ('Ali',  'Veli',   '+905550001122'),
+  ('Ayse', 'Yilmaz', '+905550001133'),
+  ('Can',  'Demir',  '+905550001144'),
+  ('Ece',  'Kaya',   '+905550001155'),
+  ('Mert', 'Aydin',  '+905550001166');
+
+-- Sabit test gunu: gelecekte bir Carsamba. Test seed'i sabit tarihle calisir;
+-- bugune gore 21 gun limiti icinde kalmasi icin tarih $TEST_GUN ile verilir.
 SQL
+
+# Gelecekteki test gunu: mesai icinde bir Carsamba (Pazar'a denk gelirse ileri al)
+GUN=$(date -v+7d +%Y-%m-%d)
+[ "$(date -v+7d +%u)" -eq 7 ] && GUN=$(date -v+8d +%Y-%m-%d)
+
+echo "==> Dolu/musait senaryolari icin randevular ($GUN)..."
+docker exec -i "$CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
+  -v g="$GUN" << 'SQL2'
+-- Sube 1'de uc saticidan 1'i (Ahmet) ve bir arac 10:00-11:00 dolu.
+-- 11:00-12:00'de uc saticinin hepsi dolu (musait calisan 0).
+-- 14:00-15:00'te uc aracin hepsi dolu (musait arac 0).
+-- 15:00-16:00 iptal edilmis: slot yeniden acik olmali.
+INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak)
+VALUES
+  -- 10:00: 1/3 calisan, 1/3 arac dolu
+  (1, 1, 'TEST_SURUSU', 1, 'VIN00000000000001', :'g'::date + time '10:00', :'g'::date + time '11:00', 'PLANLANDI', 'PANEL'),
+  -- 11:00: 3/3 calisan dolu (araclar bos)
+  (2, 1, 'TEST_SURUSU', 1, 'VIN00000000000001', :'g'::date + time '11:00', :'g'::date + time '12:00', 'PLANLANDI', 'PANEL'),
+  (3, 1, 'TEST_SURUSU', 2, 'VIN00000000000002', :'g'::date + time '11:00', :'g'::date + time '12:00', 'PLANLANDI', 'PANEL'),
+  (4, 1, 'TEST_SURUSU', 3, 'VIN00000000000003', :'g'::date + time '11:00', :'g'::date + time '12:00', 'PLANLANDI', 'PANEL'),
+  -- 14:00: 3/3 arac dolu (calisanlar bos)
+  (1, 1, 'TEST_SURUSU', 1, 'VIN00000000000001', :'g'::date + time '14:00', :'g'::date + time '15:00', 'PLANLANDI', 'PANEL'),
+  (2, 1, 'TEST_SURUSU', 2, 'VIN00000000000002', :'g'::date + time '14:00', :'g'::date + time '15:00', 'PLANLANDI', 'PANEL'),
+  (3, 1, 'TEST_SURUSU', 3, 'VIN00000000000003', :'g'::date + time '14:00', :'g'::date + time '15:00', 'PLANLANDI', 'PANEL'),
+  -- 15:00: iptal -> slot yeniden acik olmali (arac 1 secildi ki tek arac senaryosu net olsun)
+  (4, 1, 'TEST_SURUSU', 1, 'VIN00000000000001', :'g'::date + time '15:00', :'g'::date + time '16:00', 'IPTAL', 'PANEL');
+SQL2
 
 docker exec -i "$CONTAINER" psql -U postgres -d postgres -q \
   -c "ALTER ROLE bot_app PASSWORD '$BOTPW'"
@@ -116,12 +153,7 @@ curl -fsS "http://127.0.0.1:$HTTP_PORT/saglik" >/dev/null 2>&1 || {
 
 echo "==> HTTP senaryoları çalıştırılıyor..."
 
-# Gelecekteki bir Çarşamba: sabit ve mesai içinde
-GUN=$(date -v+7d +%Y-%m-%d)
-# O günün hafta günü Pazar'a denk gelirse bir gün ileri al
-DOW=$(date -v+7d +%u)
-[ "$DOW" -eq 7 ] && GUN=$(date -v+8d +%Y-%m-%d)
-
+# GUN yukarida (seed ile ayni sekilde) hesaplandi.
 TEL='X-Musteri-Telefon: +905321234567'
 TABAN="http://127.0.0.1:$HTTP_PORT"
 GECEN=0
@@ -163,6 +195,53 @@ bekle "Bilgi alanı saat aralığını taşır" 200 'Saat aralıkları: 10:00-12
   -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN"
 bekle "Periyodik bakımda araç listesi boş" 200 '"musait_araclar":[]' \
   -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=PERIYODIK_BAKIM&tarih=$GUN"
+
+echo "--- GET /bot/slot (doluluk senaryoları) ---"
+# 10:00 -> 1/3 calisan, 1/3 arac dolu; kalan 2 calisan + 2 arac musait
+bekle "SENARYO 1/3 calisan + 1/3 arac dolu -> 2 musait calisan" 200 \
+  '"baslangic":"10:00","bitis":"11:00","musait_calisan_sayisi":2' \
+  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN"
+# 11:00 -> 3/3 calisan dolu: slot listede olmamali
+if curl -s -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN" \
+     | grep -qF '"baslangic":"11:00"'; then
+  echo "[FAIL] SENARYO tum calisanlar dolu -> 11:00 slotu elenmeli"
+  KALAN=$((KALAN + 1))
+else
+  echo "[PASS] SENARYO tum calisanlar dolu -> 11:00 slotu elenir"
+  GECEN=$((GECEN + 1))
+fi
+# 14:00 -> 3/3 arac dolu: slot listede olmamali
+if curl -s -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN" \
+     | grep -qF '"baslangic":"14:00"'; then
+  echo "[FAIL] SENARYO tum araclar dolu -> 14:00 slotu elenmeli"
+  KALAN=$((KALAN + 1))
+else
+  echo "[PASS] SENARYO tum araclar dolu -> 14:00 slotu elenir"
+  GECEN=$((GECEN + 1))
+fi
+# 15:00 -> iptal edilmis randevu slotu yeniden acar
+bekle "SENARYO iptal edilen randevu slotu yeniden acar" 200 '"baslangic":"15:00"' \
+  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN"
+# arac_vin filtresi: dolu arac 10:00'da donmemeli
+if curl -s -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN&arac_vin=VIN00000000000001" \
+     | grep -qF '"baslangic":"10:00"'; then
+  echo "[FAIL] SENARYO dolu arac icin 10:00 slotu donmemeli"
+  KALAN=$((KALAN + 1))
+else
+  echo "[PASS] SENARYO arac_vin=dolu arac -> 10:00 slotu donmez"
+  GECEN=$((GECEN + 1))
+fi
+# arac_vin filtresi: bos arac 15:00'te tek arac olarak doner
+bekle "SENARYO arac_vin=bos arac -> tek arac" 200 \
+  '"musait_araclar":[{"vin":"VIN00000000000003"' \
+  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN&arac_vin=VIN00000000000003"
+# Hafta sonu: o gun mesai yok -> slot listesi bos
+PAZAR=$(date -v+7d -v+sun +%Y-%m-%d 2>/dev/null || date -v+sun +%Y-%m-%d)
+bekle "SENARYO pazar gunu slot yok (mesai disi)" 200 '"slotlar":[]' \
+  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$PAZAR"
+# Baska subede calisan/arac yok -> slot listesi bos
+bekle "SENARYO sube 2'de calisan yok -> slot yok" 200 '"slotlar":[]' \
+  -H "$TEL" "$TABAN/bot/slot?sube_id=2&tur_kodu=TEST_SURUSU&tarih=$GUN"
 bekle "Olmayan şube 404" 404 '"kod":"SUBE_YOK"' \
   -H "$TEL" "$TABAN/bot/slot?sube_id=999&tur_kodu=TEST_SURUSU&tarih=$GUN"
 bekle "Olmayan tür 404" 404 '"kod":"TUR_YOK"' \

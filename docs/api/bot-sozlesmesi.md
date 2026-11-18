@@ -327,7 +327,7 @@ döner. LLM alternatif gün önerir.
 
 ### Veritabanı
 
-Aşağıdaki sorgu doğrulanmıştır (bkz. `scripts/test-bot-api.sh`). Parametreler:
+Aşağıdaki sorgu doğrulanmıştır (bkz. `scripts/test-bot-http.sh`). Parametreler:
 `$1` tarih, `$2` tur_kodu, `$3` sube_id, `$4` arac_vin (NULL olabilir).
 
 ```sql
