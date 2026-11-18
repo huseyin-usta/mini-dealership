@@ -56,7 +56,16 @@ public abstract class BotHandler implements HttpHandler {
 
             try (Connection conn = db.baglanti()) {
                 try {
-                    BotKimligi.ata(conn, telefon.trim());
+                    try {
+                        BotKimligi.ata(conn, telefon.trim());
+                    } catch (IllegalArgumentException e) {
+                        // Biçimi bozuk kimlik: RLS'yi boş kümeye düşürmek yerine açıkça reddet.
+                        conn.rollback();
+                        JsonYanit.yaz(ex, 401,
+                                JsonYanit.hatali("KIMLIK_YOK",
+                                        "Müşteri kimliği geçersiz.", true, null));
+                        return;
+                    }
                     Object veri = isle(ex, conn);
                     conn.commit();
                     if (veri != null) {
