@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpServer;
 import tr.edu.etu.dealership.config.Ayarlar;
 import tr.edu.etu.dealership.db.Veritabani;
 import tr.edu.etu.dealership.web.HttpYardimci;
+import tr.edu.etu.dealership.web.SlotHandler;
 import tr.edu.etu.dealership.web.SubeHandler;
 
 import java.io.IOException;
@@ -31,6 +32,7 @@ public final class Main {
 
         // Bot API (docs/api/bot-sozlesmesi.md)
         sunucu.createContext("/bot/sube", new SubeHandler(db));
+        sunucu.createContext("/bot/slot", new SlotHandler(db));
         sunucu.createContext("/saglik", HttpYardimci.saglik(db));
 
         sunucu.start();
