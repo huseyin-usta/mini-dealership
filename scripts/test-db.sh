@@ -721,6 +721,78 @@ BEGIN
   RAISE NOTICE '  [PASS] Test 22: Personel yetkileri dogru (hash gizli, katalog ve loglar salt-okunur)';
 END $$;
 
+-- Test 23: v_musteri_servis_durumu — yalnizca konusulan musteri, fail-closed
+DO $$
+DECLARE
+  v_sayi integer;
+  v_vin  text;
+  v_id   integer;
+  v_tel1 text;
+  v_tel2 text;
+BEGIN
+  -- Iki musteri, her birinin bir araci + acik servis kaydi
+  INSERT INTO musteri (ad, soyad, telefon) VALUES ('Selin', 'A', '+905550009911') RETURNING musteri_id, telefon INTO v_id, v_tel1;
+  INSERT INTO musteri (ad, soyad, telefon) VALUES ('Kerem', 'B', '+905550009922') RETURNING musteri_id INTO v_id;
+  SELECT telefon INTO v_tel2 FROM musteri WHERE musteri_id = v_id;
+
+  INSERT INTO arac (vin, versiyon_id, sube_id, renk, plaka, durum, musteri_id)
+  VALUES ('VINSTEST000000001', 1, 1, 'Beyaz', '06TT01', 'SATILDI',
+          (SELECT musteri_id FROM musteri WHERE telefon = v_tel1)),
+         ('VINSTEST000000002', 1, 1, 'Gri', '06TT02', 'SATILDI', v_id);
+
+  -- Her musteri icin ayri saat ve ayri calisan (cakisma kisitlari icin)
+  INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak)
+  SELECT m.musteri_id, 1, 'PERIYODIK_BAKIM', 2, a.vin,
+         timestamp '2030-01-07 09:00', timestamp '2030-01-07 10:00', 'TAMAMLANDI', 'PANEL'
+    FROM musteri m JOIN arac a ON a.musteri_id = m.musteri_id
+   WHERE m.telefon = v_tel1;
+  INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak)
+  SELECT m.musteri_id, 1, 'PERIYODIK_BAKIM', 2, a.vin,
+         timestamp '2030-01-07 11:00', timestamp '2030-01-07 12:00', 'TAMAMLANDI', 'PANEL'
+    FROM musteri m JOIN arac a ON a.musteri_id = m.musteri_id
+   WHERE m.telefon = v_tel2;
+
+  INSERT INTO servis_kaydi (acilis_randevu_id, sorumlu_calisan_id, sebep, giris_kilometresi)
+  SELECT r.randevu_id, 2, 'BAKIM', 1000 FROM randevu r WHERE r.arac_vin LIKE 'VINSTEST%';
+  INSERT INTO servis_durum_gecmisi (servis_kaydi_id, durum)
+  SELECT sk.servis_kaydi_id, 'TESLIME_HAZIR' FROM servis_kaydi sk
+    JOIN randevu r ON r.randevu_id = sk.acilis_randevu_id WHERE r.arac_vin LIKE 'VINSTEST%';
+
+  -- (a) Kimlik degiskeni yok -> 0 satir (fail-closed)
+  SET LOCAL ROLE bot;
+  RESET app.musteri_telefon;
+  SELECT count(*) INTO v_sayi FROM v_musteri_servis_durumu;
+  IF v_sayi <> 0 THEN
+    RAISE EXCEPTION 'TEST 23 BASARISIZ: kimlik yokken % satir dondu', v_sayi;
+  END IF;
+
+  -- (b) 1. musteri oturumu -> yalnizca kendi VIN'i
+  PERFORM set_config('app.musteri_telefon', v_tel1, true);
+  SELECT count(*), max(arac_vin) INTO v_sayi, v_vin FROM v_musteri_servis_durumu;
+  IF v_sayi <> 1 OR v_vin <> 'VINSTEST000000001' THEN
+    RAISE EXCEPTION 'TEST 23 BASARISIZ: musteri 1 kendi disinda satir gordu (% satir, vin=%)', v_sayi, v_vin;
+  END IF;
+
+  -- (c) 2. musteri oturumu -> diger musterinin VIN'i gorunmez
+  PERFORM set_config('app.musteri_telefon', v_tel2, true);
+  SELECT count(*), max(arac_vin) INTO v_sayi, v_vin FROM v_musteri_servis_durumu;
+  IF v_sayi <> 1 OR v_vin <> 'VINSTEST000000002' THEN
+    RAISE EXCEPTION 'TEST 23 BASARISIZ: musteri 2 yalniz kendi satirini gormedi (% satir, vin=%)', v_sayi, v_vin;
+  END IF;
+
+  -- (d) PII/hassas kolon sizintisi: masraf ve calisan kimligi view'da olmamali
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'v_musteri_servis_durumu'
+                AND column_name IN ('toplam_masraf', 'musteri_payi', 'garanti_payi',
+                                    'sigorta_payi', 'sorumlu_calisan_id', 'giris_kilometresi')) THEN
+    RAISE EXCEPTION 'TEST 23 BASARISIZ: view hassas kolon sizdiriyor';
+  END IF;
+
+  RESET ROLE;
+  RESET app.musteri_telefon;
+  RAISE NOTICE '  [PASS] Test 23: v_musteri_servis_durumu musteriyi izole ediyor (fail-closed, masrafsiz)';
+END $$;
+
 EOF
 
 echo ""

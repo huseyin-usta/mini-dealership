@@ -47,7 +47,7 @@ public final class SlotHandler extends BotHandler {
                    AND m.acilis <= ts.baslangic AND ts.bitis <= m.kapanis
             ),
             tur AS (
-                SELECT rt.yetkinlik_id, rt.departman,
+                SELECT rt.tur_kodu, rt.yetkinlik_id, rt.departman,
                        rt.tur_kodu IN ('TEST_SURUSU', 'TESLIMAT', 'SERVIS_TESLIM') AS arac_gerekli
                   FROM randevu_turu rt
                  WHERE rt.tur_kodu = ?
@@ -64,11 +64,27 @@ public final class SlotHandler extends BotHandler {
                             AND cy.yetkinlik_id = t.yetkinlik_id))
             ),
             uygun_arac AS (
+                -- Test sürüşü/teslimat: şubede stokta olan araçlar
                 SELECT a.vin, v.paket_adi, md.ad AS model, a.renk
                   FROM arac a
                   JOIN versiyon v ON v.versiyon_id = a.versiyon_id
                   JOIN model   md ON md.model_id   = v.model_id
                  WHERE a.sube_id = ? AND a.durum = 'STOKTA'
+                   AND (SELECT arac_gerekli FROM tur)
+                   AND (SELECT tur_kodu FROM tur) <> 'SERVIS_TESLIM'
+                UNION ALL
+                -- Servisten teslim: müşterinin bu şubede açık ve TESLİME HAZIR
+                -- kaydı olan araçlar. Aynı araç için birden çok açık kayıt
+                -- olasılığına karşı DISTINCT ON ile tekilleştirilir.
+                SELECT DISTINCT a.vin, v.paket_adi, md.ad AS model, a.renk
+                  FROM arac a
+                  JOIN versiyon v ON v.versiyon_id = a.versiyon_id
+                  JOIN model   md ON md.model_id   = v.model_id
+                  JOIN v_musteri_servis_durumu msd ON msd.arac_vin = a.vin
+                 WHERE (SELECT tur_kodu FROM tur) = 'SERVIS_TESLIM'
+                   AND msd.kapandi_mi = false
+                   AND msd.son_durum = 'TESLIME_HAZIR'
+                   AND msd.sube_id = ?
             )
             SELECT o.baslangic::time AS baslangic,
                    o.bitis::time     AS bitis,
@@ -186,18 +202,38 @@ public final class SlotHandler extends BotHandler {
      */
     private void aracUygunMu(Connection conn, int subeId, String turKodu, String vin) throws Exception {
         if (turKodu.equals("SERVIS_TESLIM")) {
+            // v_musteri_servis_durumu: yalnızca konuşulan müşterinin kayıtları
+            // (oturum değişkeni ile süzülür), masraf ve çalışan bilgisi yok.
+            // Aynı araç için birden çok açık kayıt olsa bile "herhangi biri
+            // teslime hazırsa" teslim edilebilir; en yeni kaydı seçmeye çalışmak
+            // eski bir kaydı gizleyerek yanlış sonuç verirdi.
             try (PreparedStatement ps = conn.prepareStatement("""
-                    SELECT (SELECT count(*) FROM servis_kaydi sk
-                              JOIN randevu r ON r.randevu_id = sk.acilis_randevu_id
-                              JOIN arac a ON a.vin = r.arac_vin
-                             WHERE a.vin = ? AND sk.teslim_randevu_id IS NULL) AS acik
+                    SELECT count(*)                                   AS acik_kayit,
+                           coalesce(bool_or(son_durum = 'TESLIME_HAZIR'), false) AS hazir,
+                           max(tahmini_teslim_tarihi) FILTER (WHERE son_durum <> 'TESLIME_HAZIR')
+                                                                      AS tahmini,
+                           coalesce((array_agg(son_durum ORDER BY son_durum_zamani DESC))[1],
+                                    'BILINMIYOR')                     AS son_durum
+                      FROM v_musteri_servis_durumu
+                     WHERE arac_vin = ? AND kapandi_mi = false AND sube_id = ?
                     """)) {
                 ps.setString(1, vin);
+                ps.setInt(2, subeId);
                 try (ResultSet rs = ps.executeQuery()) {
                     rs.next();
-                    if (rs.getInt("acik") == 0) {
+                    if (rs.getInt("acik_kayit") == 0) {
                         throw ApiHatasi.goster("ARAC_SERVISTE_DEGIL",
                                 "Bu araç için açık bir servis kaydı bulunmuyor.", 404, null);
+                    }
+                    if (!rs.getBoolean("hazir")) {
+                        String sonDurum = rs.getString("son_durum");
+                        Map<String, Object> detay = new LinkedHashMap<>();
+                        detay.put("son_durum", sonDurum);
+                        detay.put("tahmini_teslim_tarihi",
+                                rs.getDate("tahmini") == null ? null : rs.getDate("tahmini").toString());
+                        throw ApiHatasi.goster("SERVIS_TESLIM_HAZIR_DEGIL",
+                                "Aracınız serviste; mevcut durumu: " + durumAdi(sonDurum) + ".",
+                                409, detay);
                     }
                 }
             }
@@ -235,10 +271,11 @@ public final class SlotHandler extends BotHandler {
             ps.setString(5, turKodu);
             ps.setInt(6, subeId);
             ps.setInt(7, subeId);
-            ps.setString(8, aracVin);
+            ps.setInt(8, subeId);   // SERVIS_TESLIM dalı: kaydın şubesi
             ps.setString(9, aracVin);
             ps.setString(10, aracVin);
             ps.setString(11, aracVin);
+            ps.setString(12, aracVin);
 
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -278,6 +315,20 @@ public final class SlotHandler extends BotHandler {
     /** {@code 10:00:00} -> {@code 10:00} */
     private static String kisaSaat(String hhmmss) {
         return hhmmss == null ? null : hhmmss.substring(0, 5);
+    }
+
+    /** Servis durum kodunu müşterinin anlayacağı Türkçe metne çevirir. */
+    private static String durumAdi(String kod) {
+        if (kod == null) return "Bilinmiyor";
+        return switch (kod) {
+            case "INCELENIYOR"       -> "İnceleniyor";
+            case "PARCA_BEKLENIYOR"  -> "Parça bekleniyor";
+            case "EKSPERTIZ_BEKLENIYOR" -> "Ekspertiz raporu bekleniyor";
+            case "ISLEMDE"           -> "İşlem yapılıyor";
+            case "TESLIME_HAZIR"     -> "Teslime hazır";
+            case "TAMAMLANDI"        -> "Tamamlandı";
+            default                  -> kod;
+        };
     }
 
     // --- parametre yardımcıları --------------------------------------------

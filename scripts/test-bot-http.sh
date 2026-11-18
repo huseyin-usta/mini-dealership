@@ -132,6 +132,70 @@ VALUES
   (3, 1, 'TEST_SURUSU', 3, 'VIN00000000000003', :'g'::date + time '14:00', :'g'::date + time '15:00', 'PLANLANDI', 'PANEL'),
   -- 15:00: iptal -> slot yeniden acik olmali (arac 1 secildi ki tek arac senaryosu net olsun)
   (4, 1, 'TEST_SURUSU', 1, 'VIN00000000000001', :'g'::date + time '15:00', :'g'::date + time '16:00', 'IPTAL', 'PANEL');
+
+-- Servis senaryolari: musteri 6'nin iki araca sahip (satilmis), biri serviste
+-- PARCA_BEKLENIYOR (teslime hazir degil), digeri TESLIME_HAZIR.
+INSERT INTO musteri (ad, soyad, telefon) VALUES ('Selin', 'Oz', '+905550001177');
+INSERT INTO arac (vin, versiyon_id, sube_id, renk, plaka, durum, musteri_id) VALUES
+  ('VIN00000000000021', 1, 1, 'Kirmizi', '06SS01', 'SATILDI', 6),
+  ('VIN00000000000022', 1, 1, 'Beyaz',   '06SS02', 'SATILDI', 6);
+INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak) VALUES
+  (6, 1, 'SERVIS_GIRIS', 4, 'VIN00000000000021', :'g'::date - interval '14 day' + time '09:00',
+                        :'g'::date - interval '14 day' + time '09:30', 'TAMAMLANDI', 'PANEL'),
+  (6, 1, 'SERVIS_GIRIS', 4, 'VIN00000000000022', :'g'::date - interval '7 day' + time '09:00',
+                        :'g'::date - interval '7 day' + time '09:30', 'TAMAMLANDI', 'PANEL');
+INSERT INTO servis_kaydi (acilis_randevu_id, sorumlu_calisan_id, sebep, giris_kilometresi, tahmini_teslim_tarihi)
+SELECT randevu_id, 4, 'ARIZA', 30000, current_date + 5 FROM randevu
+ WHERE arac_vin = 'VIN00000000000021' AND tur_kodu = 'SERVIS_GIRIS';
+INSERT INTO servis_kaydi (acilis_randevu_id, sorumlu_calisan_id, sebep, giris_kilometresi, tahmini_teslim_tarihi)
+SELECT randevu_id, 4, 'ARIZA', 40000, current_date FROM randevu
+ WHERE arac_vin = 'VIN00000000000022' AND tur_kodu = 'SERVIS_GIRIS';
+INSERT INTO servis_durum_gecmisi (servis_kaydi_id, durum)
+SELECT servis_kaydi_id, 'PARCA_BEKLENIYOR' FROM servis_kaydi sk
+  JOIN randevu r ON r.randevu_id = sk.acilis_randevu_id WHERE r.arac_vin = 'VIN00000000000021';
+INSERT INTO servis_durum_gecmisi (servis_kaydi_id, durum)
+SELECT servis_kaydi_id, 'TESLIME_HAZIR' FROM servis_kaydi sk
+  JOIN randevu r ON r.randevu_id = sk.acilis_randevu_id WHERE r.arac_vin = 'VIN00000000000022';
+
+-- Ayni araca IKINCI acik servis kaydi (eski kayit PARCA_BEKLENIYOR, yeni
+-- kayit TESLIME_HAZIR). Bot "herhangi biri hazirsa" kuralini uygulamali.
+INSERT INTO arac (vin, versiyon_id, sube_id, renk, plaka, durum, musteri_id) VALUES
+  ('VIN00000000000023', 1, 1, 'Yesil', '06SS03', 'SATILDI', 6);
+INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak) VALUES
+  (6, 1, 'SERVIS_GIRIS', 4, 'VIN00000000000023', :'g'::date - interval '21 day' + time '09:00',
+                        :'g'::date - interval '21 day' + time '09:30', 'TAMAMLANDI', 'PANEL'),
+  (6, 1, 'SERVIS_GIRIS', 4, 'VIN00000000000023', :'g'::date - interval '14 day' + time '11:00',
+                        :'g'::date - interval '14 day' + time '11:30', 'TAMAMLANDI', 'PANEL');
+INSERT INTO servis_kaydi (acilis_randevu_id, sorumlu_calisan_id, sebep, giris_kilometresi)
+SELECT randevu_id, 4, 'BAKIM', 50000 FROM randevu
+ WHERE arac_vin = 'VIN00000000000023' AND baslangic = :'g'::date - interval '21 day' + time '09:00';
+INSERT INTO servis_kaydi (acilis_randevu_id, sorumlu_calisan_id, sebep, giris_kilometresi)
+SELECT randevu_id, 4, 'ARIZA', 51000 FROM randevu
+ WHERE arac_vin = 'VIN00000000000023' AND baslangic = :'g'::date - interval '14 day' + time '11:00';
+INSERT INTO servis_durum_gecmisi (servis_kaydi_id, durum)
+SELECT sk.servis_kaydi_id, 'PARCA_BEKLENIYOR' FROM servis_kaydi sk
+  JOIN randevu r ON r.randevu_id = sk.acilis_randevu_id
+ WHERE r.arac_vin = 'VIN00000000000023' AND r.baslangic = :'g'::date - interval '21 day' + time '09:00';
+INSERT INTO servis_durum_gecmisi (servis_kaydi_id, durum)
+SELECT sk.servis_kaydi_id, 'TESLIME_HAZIR' FROM servis_kaydi sk
+  JOIN randevu r ON r.randevu_id = sk.acilis_randevu_id
+ WHERE r.arac_vin = 'VIN00000000000023' AND r.baslangic = :'g'::date - interval '14 day' + time '11:00';
+
+-- Sube 2'de serviste olan arac: sube 1 icin yapilan SERVIS_TESLIM sorgusunda
+-- GORUNMEMELI (teslim ancak aracin serviste oldugu subede yapilir).
+INSERT INTO sube (sehir, ad) VALUES ('İzmir', 'Bornova2');
+INSERT INTO calisan (sube_id, ad, soyad, departman, eposta, kullanici_adi, sifre_hash, ise_giris_tarihi)
+VALUES (9, 'Okan', 'Usta', 'SERVIS', 'o@x', 'o.u', 'h', '2024-01-01');
+INSERT INTO arac (vin, versiyon_id, sube_id, renk, plaka, durum, musteri_id) VALUES
+  ('VIN00000000000024', 1, 9, 'Mor', '35BB01', 'SATILDI', 6);
+INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak) VALUES
+  (6, 9, 'SERVIS_GIRIS', 5, 'VIN00000000000024', :'g'::date - interval '7 day' + time '13:00',
+                        :'g'::date - interval '7 day' + time '13:30', 'TAMAMLANDI', 'PANEL');
+INSERT INTO servis_kaydi (acilis_randevu_id, sorumlu_calisan_id, sebep, giris_kilometresi)
+SELECT randevu_id, 5, 'ARIZA', 60000 FROM randevu WHERE arac_vin = 'VIN00000000000024';
+INSERT INTO servis_durum_gecmisi (servis_kaydi_id, durum)
+SELECT sk.servis_kaydi_id, 'TESLIME_HAZIR' FROM servis_kaydi sk
+  JOIN randevu r ON r.randevu_id = sk.acilis_randevu_id WHERE r.arac_vin = 'VIN00000000000024';
 SQL2
 
 docker exec -i "$CONTAINER" psql -U postgres -d postgres -q \
@@ -256,6 +320,86 @@ bekle "Stokta olmayan VIN 404" 404 '"kod":"ARAC_STOKTA_YOK"' \
   -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN&arac_vin=VIN00000000000009"
 bekle "Zorunlu parametre eksik 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
   -H "$TEL" "$TABAN/bot/slot?tur_kodu=TEST_SURUSU&tarih=$GUN"
+
+echo "--- GET /bot/slot (SERVIS_TESLIM) — içerik kontrolleri ---"
+TEL_S='X-Musteri-Telefon: +905550001177'
+
+# arac_vin verilmeden: yalnizca TESLIME_HAZIR araclar listelenmeli
+YANIT=$(curl -s -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN")
+if printf '%s' "$YANIT" | grep -qF 'VIN00000000000022'; then
+  echo "[PASS] Teslime hazir arac (022) slot listesinde var"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Teslime hazir arac (022) slot listesinde yok"; echo "       $YANIT"; KALAN=$((KALAN + 1))
+fi
+if printf '%s' "$YANIT" | grep -qF 'VIN00000000000021'; then
+  echo "[FAIL] Parca bekleyen arac (021) slot listesinde OLMAMALI"; KALAN=$((KALAN + 1))
+else
+  echo "[PASS] Parca bekleyen arac (021) slot listesinde yer almiyor"; GECEN=$((GECEN + 1))
+fi
+# Ayni araca iki acik kayit: VIN her slotta en fazla BIR kez gorunmeli.
+# (Slot basina tekrar normaldir; ayni slot icinde duplike olmasi hatadir.)
+slot_sayisi=$(printf '%s' "$YANIT" | grep -oF '"baslangic"' | wc -l | tr -d ' ')
+vin_sayisi=$(printf '%s' "$YANIT" | grep -oF 'VIN00000000000023' | wc -l | tr -d ' ')
+if [ "$slot_sayisi" -gt 0 ] && [ "$vin_sayisi" -eq "$slot_sayisi" ]; then
+  echo "[PASS] Coklu acik kayitta VIN slot basina tek kez ($vin_sayisi VIN / $slot_sayisi slot)"
+  GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] VIN slot basina tek kez olmali: $vin_sayisi VIN / $slot_sayisi slot"
+  KALAN=$((KALAN + 1))
+fi
+# Baska subede serviste olan arac bu subenin slotlarinda gorunmemeli
+if printf '%s' "$YANIT" | grep -qF 'VIN00000000000024'; then
+  echo "[FAIL] Baska subedeki (24) arac bu subenin slotlarinda gorunuyor"; KALAN=$((KALAN + 1))
+else
+  echo "[PASS] Baska subedeki arac bu subenin slotlarinda gorunmuyor"; GECEN=$((GECEN + 1))
+fi
+# Coklu acik kayit: yeni kayit TESLIME_HAZIR ise teslim edilebilmeli
+bekle "Coklu acik kayit: yeni kayit hazirsa teslim edilebilir" 200 '"ok":true' \
+  -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN&arac_vin=VIN00000000000023"
+
+echo "--- GET /bot/slot (SERVIS_TESLIM) ---"
+TEL_S='X-Musteri-Telefon: +905550001177'
+bekle "Servisten teslim: teslime hazir arac slot doner" 200 '"SERVIS_TESLIM"' \
+  -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN&arac_vin=VIN00000000000022"
+bekle "Servisten teslim: parca bekleyen arac 409" 409 '"kod":"SERVIS_TESLIM_HAZIR_DEGIL"' \
+  -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN&arac_vin=VIN00000000000021"
+bekle "409 yaniti son durumu ve tahmini tarihi tasir" 409 '"son_durum":"PARCA_BEKLENIYOR"' \
+  -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN&arac_vin=VIN00000000000021"
+bekle "409 yanitinda tahmini teslim tarihi var" 409 '"tahmini_teslim_tarihi":"' \
+  -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN&arac_vin=VIN00000000000021"
+bekle "Baska müşterinin servisteki aracı: açık kayıt yok" 404 '"kod":"ARAC_SERVISTE_DEGIL"' \
+  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN&arac_vin=VIN00000000000021"
+bekle "Servisten teslim: musteri kendi arac listesini gorur (arac_vin bos)" 200 '"SERVIS_TESLIM"' \
+  -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN"
+
+echo "--- Sinir degerler ---"
+BUGUN=$(date +%Y-%m-%d)
+bekle "Bugun kabul edilir" 200 '"ok":true' \
+  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$BUGUN"
+G21=$(date -v+21d +%Y-%m-%d)
+bekle "Tam 21 gun ileri kabul edilir" 200 '"ok":true' \
+  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$G21"
+G22=$(date -v+22d +%Y-%m-%d)
+bekle "22 gun reddedilir" 400 '"kod":"COK_UZAK_TARIH"' \
+  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$G22"
+
+echo "--- Guvenlik ---"
+bekle "SQL injection denemesi sehir'de" 404 '"kod":"SEHIRDE_SUBE_YOK"' \
+  -H "$TEL" --get --data-urlencode "sehir=Ankara' OR '1'='1" "$TABAN/bot/sube"
+bekle "SQL injection denemesi tur_kodu'nda" 404 '"kod":"TUR_YOK"' \
+  -H "$TEL" --get --data-urlencode "tur_kodu=TEST_SURUSU' OR '1'='1" "$TABAN/bot/slot?sube_id=1&tarih=$GUN"
+bekle "7 haneli telefon reddedilir (E.164 alt sinir)" 401 '"kod":"KIMLIK_YOK"' \
+  -H 'X-Musteri-Telefon: +1234567' "$TABAN/bot/sube"
+bekle "15 haneli telefon kabul edilir (E.164 ust sinir)" 200 '"ok":true' \
+  -H 'X-Musteri-Telefon: +123456789012345' "$TABAN/bot/sube"
+bekle "0 ile baslayan numara reddedilir" 401 '"kod":"KIMLIK_YOK"' \
+  -H 'X-Musteri-Telefon: +0123456789' "$TABAN/bot/sube"
+bekle "POST /bot/sube -> 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' \
+  -X POST -H "$TEL" "$TABAN/bot/sube"
+bekle "POST /bot/slot -> 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' \
+  -X POST -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN"
+bekle "PUT /bot/sube -> 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' \
+  -X PUT -H "$TEL" "$TABAN/bot/sube"
 
 echo "--- Kimlik ---"
 bekle "Kimliksiz istek 401" 401 '"kod":"KIMLIK_YOK"' \

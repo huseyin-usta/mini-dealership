@@ -58,7 +58,14 @@ ikisi birlikte kullanılır.
 |---|---|---|
 | Kullanıcıya gösterilir | `SEHIRDE_SUBE_YOK`, `SLOT_DOLU`, `ARAC_YOK`, `RANDEVU_YOK`, `GECMIS_TARIH` | LLM müşteriyle diyalog kurar, alternatif önerir |
 | LLM içi | `YETKI_YOK` | LLM müşteriye söylemez, başka çalışan/şube/gün arar |
-| Sistem | `SISTEM_HATASI` | "Şu an hizmet veremiyorum" |
+| Sistem | `SISTEM_HATASI` | Tüm beklenmedik hatalar (HTTP 500); LLM genel özür mesajı verir |
+
+Her endpoint'te ayrıca dönebilen ortak kodlar:
+
+| Kod | HTTP | Anlamı |
+|---|---|---|
+| `KIMLIK_YOK` | 401 | `X-Musteri-Telefon` eksik veya E.164 biçiminde değil |
+| `YONTEM_DESTEKLENMIYOR` | 405 | Endpoint'in beklediği HTTP yöntemi dışında istek (`Allow` başlığı döner) |
 
 ## Endpoint'ler
 
@@ -208,7 +215,7 @@ Bir saat dilimi ancak o türün gerektirdiği bütün kaynaklar hazırsa müsait
 | `TESLIMAT` | departman: `SATIS` | teslim edilecek araç |
 | `ARAC_INCELEME`, `SATIN_ALIM` | departman: `SATIS` | gerekmez |
 | `PERIYODIK_BAKIM`, `SERVIS_GIRIS` | departman: `SERVIS` | gerekmez (araç müşteride) |
-| `SERVIS_TESLIM` | departman: `SERVIS` | açık servis kaydındaki araç |
+| `SERVIS_TESLIM` | departman: `SERVIS` | müşterinin açık servis kaydındaki araç (teslime hazır olmalı) |
 
 Sorgu bu nedenle **sol birleştirme** ile kurulur: araç gerektirmeyen türlerde araç
 tarafı boş kalır ve slot elenmez.
@@ -314,10 +321,9 @@ döner. LLM alternatif gün önerir.
   "ok": false,
   "hata": {
     "kod": "SERVIS_TESLIM_HAZIR_DEGIL",
-    "mesaj": "Aracınız serviste; mevcut durumu: Parça Bekleniyor.",
+    "mesaj": "Aracınız serviste; mevcut durumu: Parça bekleniyor.",
     "kullaniciya_goster": true,
     "detay": {
-      "servis_kaydi_id": 42,
       "son_durum": "PARCA_BEKLENIYOR",
       "tahmini_teslim_tarihi": "2026-11-25"
     }
@@ -348,68 +354,67 @@ WITH olası AS (
        AND m.acilis <= ts.baslangic AND ts.bitis <= m.kapanis
 ),
 tur AS (
-    -- 2) Türün kuralları; araç yalnızca üç türde gerekir
-    SELECT rt.yetkinlik_id, rt.departman,
-           rt.tur_kodu IN ('TEST_SURUSU', 'TESLIMAT', 'SERVIS_TESLIM') AS arac_gerekli
-      FROM randevu_turu rt
-     WHERE rt.tur_kodu = $2
+    SELECT rt.tur_kodu, rt.yetkinlik_id, rt.departman,
+           rt.tur_kodu IN ('TEST_SURUSU','TESLIMAT','SERVIS_TESLIM') AS arac_gerekli
+      FROM randevu_turu rt WHERE rt.tur_kodu = $2
 ),
 uygun_calisan AS (
-    -- 3) Şubede, aktif, doğru departmanda ve yetkinliği olan çalışanlar
+    -- Şubede, aktif, doğru departmanda, yetkinliği olan çalışanlar
     SELECT c.calisan_id
       FROM calisan c, tur t
-     WHERE c.sube_id = $3
-       AND c.aktif_mi
-       AND c.departman = t.departman
+     WHERE c.sube_id = $3 AND c.aktif_mi AND c.departman = t.departman
        AND (t.yetkinlik_id IS NULL OR EXISTS (
              SELECT 1 FROM calisan_yetkinlik cy
               WHERE cy.calisan_id = c.calisan_id
                 AND cy.yetkinlik_id = t.yetkinlik_id))
 ),
 uygun_arac AS (
-    -- 4) Şubede stokta olan araçlar
+    -- Test sürüşü/teslimat: şubede stokta olan araçlar
     SELECT a.vin, v.paket_adi, md.ad AS model, a.renk
       FROM arac a
       JOIN versiyon v ON v.versiyon_id = a.versiyon_id
       JOIN model   md ON md.model_id   = v.model_id
      WHERE a.sube_id = $3 AND a.durum = 'STOKTA'
+       AND (SELECT arac_gerekli FROM tur)
+       AND (SELECT tur_kodu FROM tur) <> 'SERVIS_TESLIM'
+    UNION ALL
+    -- Servisten teslim: bu şubede açık ve TESLİME HAZIR kaydı olan araçlar
+    SELECT DISTINCT a.vin, v.paket_adi, md.ad AS model, a.renk
+      FROM arac a
+      JOIN versiyon v ON v.versiyon_id = a.versiyon_id
+      JOIN model   md ON md.model_id   = v.model_id
+      JOIN v_musteri_servis_durumu msd ON msd.arac_vin = a.vin
+     WHERE (SELECT tur_kodu FROM tur) = 'SERVIS_TESLIM'
+       AND msd.kapandi_mi = false
+       AND msd.son_durum = 'TESLIME_HAZIR'
+       AND msd.sube_id = $3
 )
-SELECT o.baslangic::time AS baslangic,
-       o.bitis::time     AS bitis,
-       -- Boş çalışan sayısı
+SELECT o.baslangic::time, o.bitis::time,
        (SELECT count(*) FROM uygun_calisan uc
          WHERE NOT EXISTS (SELECT 1 FROM v_dolu_slot d
                             WHERE d.calisan_id = uc.calisan_id
-                              AND tsrange(d.baslangic, d.bitis)
-                                  && tsrange(o.baslangic, o.bitis))) AS musait_calisan_sayisi,
-       -- Boş araçlar: araç gerektirmeyen türlerde daima boş dizi
+                              AND tsrange(d.baslangic, d.bitis) && tsrange(o.baslangic, o.bitis))),
        CASE WHEN t.arac_gerekli THEN
-         COALESCE((SELECT json_agg(json_build_object(
-                              'vin',   ua.vin,
-                              'model', ua.model,
-                              'paket', ua.paket_adi,
-                              'renk',  ua.renk))
+         COALESCE((SELECT json_agg(json_build_object('vin', ua.vin, 'model', ua.model,
+                                                     'paket', ua.paket_adi, 'renk', ua.renk))
                      FROM uygun_arac ua
                     WHERE ($4::varchar IS NULL OR ua.vin = $4)
                       AND NOT EXISTS (SELECT 1 FROM v_dolu_slot d
                                        WHERE d.arac_vin = ua.vin
-                                         AND tsrange(d.baslangic, d.bitis)
-                                             && tsrange(o.baslangic, o.bitis))), '[]'::json)
-       ELSE '[]'::json END AS musait_araclar
+                                         AND tsrange(d.baslangic, d.bitis) && tsrange(o.baslangic, o.bitis))),
+                  '[]'::json)
+       ELSE '[]'::json END
   FROM olası o, tur t
  WHERE (SELECT count(*) FROM uygun_calisan uc
          WHERE NOT EXISTS (SELECT 1 FROM v_dolu_slot d
                             WHERE d.calisan_id = uc.calisan_id
-                              AND tsrange(d.baslangic, d.bitis)
-                                  && tsrange(o.baslangic, o.bitis))) > 0
-   -- Araç gerekiyorsa en az bir müsait araç da şart
+                              AND tsrange(d.baslangic, d.bitis) && tsrange(o.baslangic, o.bitis))) > 0
    AND (NOT t.arac_gerekli OR EXISTS (
          SELECT 1 FROM uygun_arac ua
           WHERE ($4::varchar IS NULL OR ua.vin = $4)
             AND NOT EXISTS (SELECT 1 FROM v_dolu_slot d
                              WHERE d.arac_vin = ua.vin
-                               AND tsrange(d.baslangic, d.bitis)
-                                   && tsrange(o.baslangic, o.bitis))))
+                               AND tsrange(d.baslangic, d.bitis) && tsrange(o.baslangic, o.bitis))))
  ORDER BY o.baslangic
 ```
 

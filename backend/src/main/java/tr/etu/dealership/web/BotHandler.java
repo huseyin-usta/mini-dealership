@@ -38,7 +38,8 @@ public abstract class BotHandler implements HttpHandler {
     @Override
     public final void handle(HttpExchange ex) throws IOException {
         try {
-            if (!"GET".equals(ex.getRequestMethod()) && !"POST".equals(ex.getRequestMethod())) {
+            if (!beklenenYontem().equals(ex.getRequestMethod())) {
+                ex.getResponseHeaders().set("Allow", beklenenYontem());
                 JsonYanit.yaz(ex, 405,
                         JsonYanit.hatali("YONTEM_DESTEKLENMIYOR", "Bu yöntem desteklenmiyor.",
                                 true, null));
@@ -83,8 +84,10 @@ public abstract class BotHandler implements HttpHandler {
             }
 
         } catch (SQLException e) {
+            // Sözleşme: SISTEM_HATASI tek biçimdedir (HTTP 500). Altyapı arızası
+            // ile iş hatasını ayırmak istemciye fayda sağlamaz; log'da ayrışır.
             LOG.log(Level.SEVERE, "Veritabanı hatası: " + ex.getRequestURI(), e);
-            JsonYanit.yaz(ex, 503,
+            JsonYanit.yaz(ex, 500,
                     JsonYanit.hatali("SISTEM_HATASI", "Şu an hizmet veremiyorum.", true, null));
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "Beklenmedik hata: " + ex.getRequestURI(), e);
@@ -100,6 +103,11 @@ public abstract class BotHandler implements HttpHandler {
      * {@code null} dönerse yalnızca commit yapılır, gövde yazılmaz.
      */
     protected abstract Object isle(HttpExchange ex, Connection conn) throws Exception;
+
+    /** Bu endpoint'in kabul ettiği HTTP yöntemi. Sözleşmede GET/POST olarak sabittir. */
+    protected String beklenenYontem() {
+        return "GET";
+    }
 
     /** Query parametrelerini okur (kodlama çözülmüş). */
     protected static Map<String, String> parametreler(HttpExchange ex) {
