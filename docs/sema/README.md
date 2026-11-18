@@ -30,6 +30,7 @@
 | [public.v_rapor_musteri](public.v_rapor_musteri.md) | 5 |  | VIEW |
 | [public.v_rapor_randevu](public.v_rapor_randevu.md) | 19 |  | VIEW |
 | [public.v_dolu_slot](public.v_dolu_slot.md) | 5 |  | VIEW |
+| [public.v_musteri_servis_durumu](public.v_musteri_servis_durumu.md) | 10 | Bot için müşteriye özel servis durumu: masraf ve çalışan bilgisi içermez, yalnızca konuşulan müşterinin satırlarını gösterir. | VIEW |
 
 ## Stored procedures and functions
 

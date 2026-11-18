@@ -35,6 +35,7 @@
 | arac_pkey | CREATE UNIQUE INDEX arac_pkey ON public.arac USING btree (vin) |
 | arac_plaka_key | CREATE UNIQUE INDEX arac_plaka_key ON public.arac USING btree (plaka) |
 | idx_arac_sube_durum | CREATE INDEX idx_arac_sube_durum ON public.arac USING btree (sube_id, durum) |
+| idx_arac_musteri | CREATE INDEX idx_arac_musteri ON public.arac USING btree (musteri_id) WHERE (musteri_id IS NOT NULL) |
 
 ## Relations
 

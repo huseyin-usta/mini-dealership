@@ -33,6 +33,7 @@ Bu doküman, `veri/uret.py` ile üretilen **453.096 ana işlem satırı** (topla
 | **Sorgu 5** | Şube Servis Teslim Zamanlaması & Gecikme | — | **`22.44 ms`** | — | Hash Join + `shared hit=2.608` (4.440 onarım) |
 | **Sorgu 6** | Garantili Araçlarda Karşılama Oranı | `111.40 ms` | **`108.81 ms`** | ~1.02x | CPU-bound (LAG window function) |
 | **Sorgu 7** | Model Bazında Erken Garanti Bozulma | — | **`97.18 ms`** | — | Tüm satılan araçlarda `LAG()` + `shared hit=1.983` |
+| **Sorgu 8** | Müşteri Servis Durumu (`v_musteri_servis_durumu`) | `416.88 ms` | **`0.58 ms`** | **722x** | `Seq Scan` (77.957 satır) → `Index Scan idx_randevu_musteri` |
 
 ---
 
@@ -67,6 +68,19 @@ Bu doküman, `veri/uret.py` ile üretilen **453.096 ana işlem satırı** (topla
     - Sorgu 1'deki dönemsel satış sayımı için *Index-Only Scan*.
 11. **`idx_arac_sube_durum ON arac (sube_id, durum)`**
     - Paneldeki "Araçlar" ekranı ve bot stok sorguları için.
+
+---
+
+### D. Müşteri bazlı erişim (bot)
+
+12. **`idx_arac_musteri ON arac (musteri_id) WHERE musteri_id IS NOT NULL`**
+    - **Neden partial?** Yalnızca satılmış (sahibi olan) araçlar aranır; stoktaki
+      602 aracın indekste yer almasına gerek yok. Bot "araclarim" ve müşterinin
+      servis durumu sorguları bu indeksten faydalanır.
+13. **`idx_randevu_musteri ON randevu (musteri_id, baslangic DESC)`**
+    - **Neden bu kolonlar?** `v_musteri_servis_durumu` view'ı
+      `WHERE musteri_id = fn_aktif_musteri_id()` ile süzülür. İkinci kolon
+      (`baslangic DESC`) son randevuları sıralama maliyeti olmadan getirir.
 
 ---
 
@@ -181,3 +195,41 @@ Aşağıdaki çıktılar [sorgular.sql](sorgular.sql) dosyasının `veri/uret.py
 | Santa Fe | 3 | 260 | 4 | 1.54 | 1.54 | 1.54 | 2.18 |
 
 
+
+---
+
+## 5. Sorgu 8 — Müşteri Servis Durumu (`v_musteri_servis_durumu`)
+
+### Amaç
+
+WhatsApp botu, müşteri "arabam ne durumda?" diye sorduğunda o müşterinin açık
+servis kaydını ve son durumunu gösterir. View, `fn_aktif_musteri_id()` ile
+süzülür; oturum değişkeni (`app.musteri_telefon`) yoksa hiçbir satır döndürmez
+(fail-closed). Masraf ve çalışan bilgisi view'da yoktur.
+
+```sql
+BEGIN;
+SELECT set_config('app.musteri_telefon', '+90555…', true);
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT * FROM v_musteri_servis_durumu;
+ROLLBACK;
+```
+
+### Ölçüm (453.096 ana satır, 77.961 randevu)
+
+| Durum | Süre | Plan | Okunan blok |
+|---|---:|---|---:|
+| **İndekssiz** | `416.88 ms` | `Seq Scan on randevu` (77.957 satır taranıp 28 kaldı) | ~2.700 |
+| **İndeksli** | **`0.58 ms`** | `Index Scan using idx_randevu_musteri` (28 satır) | ~90 |
+
+**Hızlanma: ~722x.** Bu ölçüm, indeks kararının "önce ölç, sonra ekle"
+ilkesine uygun olarak yapıldı: view önce indekssiz yazıldı, maliyet ölçüldü,
+`idx_randevu_musteri` + `idx_arac_musteri` eklendi ve tekrar ölçüldü.
+
+### Neden `idx_randevu_musteri` yeterli?
+
+View `v_servis_durumu` üzerinden `randevu` tablosuna iner; filtre
+`randevu.musteri_id` üzerindedir. `EXISTS`/`IN` yerine doğrudan indeks
+koşulu kullanılabildiği için planner `Seq Scan`'i tamamen bırakır. `arac`
+tablosuna yapılan join `vin` üzerinden yürür ve `arac_pkey` kullanılır;
+`idx_arac_musteri` ise botun doğrudan "araçlarım" sorgusu içindir.

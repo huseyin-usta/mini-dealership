@@ -47,6 +47,7 @@
 | idx_randevu_tur_durum_baslangic | CREATE INDEX idx_randevu_tur_durum_baslangic ON public.randevu USING btree (tur_kodu, durum, baslangic) |
 | idx_randevu_sube_baslangic | CREATE INDEX idx_randevu_sube_baslangic ON public.randevu USING btree (sube_id, baslangic) INCLUDE (durum, tur_kodu) |
 | idx_randevu_arac_vin | CREATE INDEX idx_randevu_arac_vin ON public.randevu USING btree (arac_vin) WHERE (arac_vin IS NOT NULL) |
+| idx_randevu_musteri | CREATE INDEX idx_randevu_musteri ON public.randevu USING btree (musteri_id, baslangic DESC) |
 
 ## Triggers
 

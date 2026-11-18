@@ -48,3 +48,14 @@ CREATE INDEX idx_stok_hareketi_tur_zaman
 CREATE INDEX idx_arac_sube_durum
     ON arac (sube_id, durum);
 
+
+-- 12. Araç: sahibine göre arama (bot "araclarim" ve müşteri servis durumu view'ı
+--     v_musteri_servis_durumu fn_aktif_musteri_id() ile süzdüğünde kullanılır).
+--     Partial: yalnızca satılmış (sahibi olan) araçlar indekste.
+CREATE INDEX idx_arac_musteri
+    ON arac (musteri_id)
+    WHERE musteri_id IS NOT NULL;
+
+-- 13. Randevu: müşteri bazlı geçmiş (son randevular, müşteri servis durumu)
+CREATE INDEX idx_randevu_musteri
+    ON randevu (musteri_id, baslangic DESC);

@@ -904,6 +904,14 @@
             "sube_id",
             "durum"
           ]
+        },
+        {
+          "name": "idx_arac_musteri",
+          "def": "CREATE INDEX idx_arac_musteri ON public.arac USING btree (musteri_id) WHERE (musteri_id IS NOT NULL)",
+          "table": "public.arac",
+          "columns": [
+            "musteri_id"
+          ]
         }
       ],
       "constraints": [
@@ -1489,6 +1497,15 @@
           "table": "public.randevu",
           "columns": [
             "arac_vin"
+          ]
+        },
+        {
+          "name": "idx_randevu_musteri",
+          "def": "CREATE INDEX idx_randevu_musteri ON public.randevu USING btree (musteri_id, baslangic DESC)",
+          "table": "public.randevu",
+          "columns": [
+            "musteri_id",
+            "baslangic"
           ]
         }
       ],
@@ -2671,6 +2688,67 @@
       "def": "CREATE VIEW v_dolu_slot AS (\n SELECT sube_id,\n    calisan_id,\n    arac_vin,\n    baslangic,\n    bitis\n   FROM randevu r\n  WHERE ((durum)::text \u003c\u003e 'IPTAL'::text)\n)",
       "referenced_tables": [
         "public.randevu"
+      ]
+    },
+    {
+      "name": "public.v_musteri_servis_durumu",
+      "type": "VIEW",
+      "comment": "Bot için müşteriye özel servis durumu: masraf ve çalışan bilgisi içermez, yalnızca konuşulan müşterinin satırlarını gösterir.",
+      "columns": [
+        {
+          "name": "servis_kaydi_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "sube_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "arac_vin",
+          "type": "varchar(17)",
+          "nullable": true
+        },
+        {
+          "name": "sebep",
+          "type": "varchar(10)",
+          "nullable": true
+        },
+        {
+          "name": "son_durum",
+          "type": "varchar(32)",
+          "nullable": true
+        },
+        {
+          "name": "son_durum_zamani",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "tahmini_teslim_tarihi",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "kalan_gun",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "gecikti_mi",
+          "type": "boolean",
+          "nullable": true
+        },
+        {
+          "name": "kapandi_mi",
+          "type": "boolean",
+          "nullable": true
+        }
+      ],
+      "def": "CREATE VIEW v_musteri_servis_durumu AS (\n SELECT servis_kaydi_id,\n    sube_id,\n    arac_vin,\n    sebep,\n    son_durum,\n    son_durum_zamani,\n    tahmini_teslim_tarihi,\n    kalan_gun,\n    gecikti_mi,\n    kapandi_mi\n   FROM v_servis_durumu sd\n  WHERE (musteri_id = fn_aktif_musteri_id())\n)",
+      "referenced_tables": [
+        "public.v_servis_durumu"
       ]
     }
   ],
