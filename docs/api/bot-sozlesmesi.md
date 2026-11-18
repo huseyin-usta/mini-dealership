@@ -7,18 +7,32 @@ PostgreSQL'de. Köprü yalnızca mesajı taşır.
 
 ## Genel kurallar
 
-### Kimlik
+### Kimlik: iki ayrı katman
 
-Müşteri kimliği **her istekte** köprüden gelir, LLM argümanlarından **asla**:
+Her istekte **iki** başlık zorunludur ve birbirine karıştırılmamalıdır:
 
 ```
-X-Musteri-Telefon: +905321234567
+X-Bot-Token: <paylaşılan sır>          ← "istek gerçekten köprüden mi geliyor"
+X-Musteri-Telefon: +905321234567       ← "hangi müşteri adına" (RLS için)
 ```
 
-Köprü bu değeri WhatsApp JID'sinden çıkarır (`resolveSender`). Backend bunu
-transaction içinde `SET LOCAL app.musteri_telefon` değişkenine yazar; satır bazlı
-güvenlik (RLS) devreye girer ve bot yalnızca o müşterinin satırlarını görür.
-Değişken yoksa RLS hiçbir satır göstermez (fail-closed).
+**Köprü kimliği (`X-Bot-Token`).** Köprü ile backend arasında paylaşılan sırdır;
+`BOT_TOKEN` ortam değişkeninden okunur ve varsayılanı **yoktur** — eksikse
+uygulama başlamaz. Müşteriye, LLM'e ve panele ulaşmaz; yalnızca köprü ekler.
+Karşılaştırma sabit zamanlıdır. Hatalı/eksik token → `401 YETKISIZ_ISTEK`;
+bu durumda **hiçbir sorgu çalıştırılmaz**.
+
+**Müşteri kimliği (`X-Musteri-Telefon`).** Köprü bu değeri WhatsApp JID'sinden
+çıkarır (`resolveSender`); LLM argümanlarından **asla**. Backend bunu transaction
+içinde `SET LOCAL app.musteri_telefon` değişkenine yazar; satır bazlı güvenlik
+(RLS) devreye girer ve bot yalnızca o müşterinin satırlarını görür. Değişken yoksa
+RLS hiçbir satır göstermez (fail-closed).
+
+**Ağ katmanı.** Backend varsayılan olarak yalnızca `127.0.0.1` dinler
+(`BIND_ADRESI`). Docker'da köprü ayrı konteynerde olduğu için `0.0.0.0` verilir;
+o durumda port dışarı **publish edilmez** ve token korunur. Panel API'si
+eklendiğinde panel kendi token'ını (`PANEL_TOKEN`) alacaktır — iki bileşen birbirinin
+yetkisiyle konuşamaz.
 
 ### Yanıt zarfı
 
@@ -64,6 +78,7 @@ Her endpoint'te ayrıca dönebilen ortak kodlar:
 
 | Kod | HTTP | Anlamı |
 |---|---|---|
+| `YETKISIZ_ISTEK` | 401 | `X-Bot-Token` eksik veya yanlış (istek köprüden gelmiyor) |
 | `KIMLIK_YOK` | 401 | `X-Musteri-Telefon` eksik veya E.164 biçiminde değil |
 | `YONTEM_DESTEKLENMIYOR` | 405 | Endpoint'in beklediği HTTP yöntemi dışında istek (`Allow` başlığı döner) |
 

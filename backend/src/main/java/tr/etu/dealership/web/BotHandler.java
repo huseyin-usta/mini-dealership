@@ -30,14 +30,25 @@ public abstract class BotHandler implements HttpHandler {
     private static final Logger LOG = Logger.getLogger(BotHandler.class.getName());
 
     protected final Veritabani db;
+    protected final BotTokeni token;
 
-    protected BotHandler(Veritabani db) {
+    protected BotHandler(Veritabani db, BotTokeni token) {
         this.db = db;
+        this.token = token;
     }
 
     @Override
     public final void handle(HttpExchange ex) throws IOException {
         try {
+            // Köprü kimliği her şeyden önce: istek doğrulanmadan endpoint'in
+            // varlığı ya da yöntemi hakkında bilgi verilmez.
+            if (!token.gecerliMi(ex.getRequestHeaders().getFirst(BotTokeni.BASLIK))) {
+                JsonYanit.yaz(ex, 401,
+                        JsonYanit.hatali("YETKISIZ_ISTEK", "İstek doğrulanamadı.",
+                                true, null));
+                return;
+            }
+
             if (!beklenenYontem().equals(ex.getRequestMethod())) {
                 ex.getResponseHeaders().set("Allow", beklenenYontem());
                 JsonYanit.yaz(ex, 405,

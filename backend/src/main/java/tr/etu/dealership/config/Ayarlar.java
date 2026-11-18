@@ -2,16 +2,22 @@ package tr.edu.etu.dealership.config;
 
 /**
  * Uygulama ayarları. Yalnızca ortam değişkenlerinden okunur; repoda hiçbir
- * gizli değer (şifre, bağlantı dizesi) tutulmaz.
+ * gizli değer (şifre, token, bağlantı dizesi) tutulmaz.
  *
  * <pre>
  * DB_HOST      (varsayılan localhost)
  * DB_PORT      (varsayılan 5432)
  * DB_NAME      (varsayılan mini_dealership)
- * BOT_DB_USER  bot rolü için login kullanıcısı
- * BOT_DB_PASS  bot rolü için şifre
+ * BOT_DB_USER  bot rolü için login kullanıcısı          (zorunlu)
+ * BOT_DB_PASS  bot rolü için şifre                      (zorunlu)
+ * BOT_TOKEN    köprü ↔ backend paylaşılan sırrı         (zorunlu)
+ * BIND_ADRESI  dinlenecek arayüz (varsayılan 127.0.0.1)
  * HTTP_PORT    (varsayılan 8080)
  * </pre>
+ *
+ * <p>Güvenli varsayılan: yalnızca yerel arayüz. Docker'da köprü ayrı bir
+ * konteynerde çalıştığı için {@code BIND_ADRESI=0.0.0.0} verilir; o durumda
+ * portu dışarı <b>publish etmemek</b> ve {@code BOT_TOKEN}'ı korumak gerekir.
  */
 public final class Ayarlar {
 
@@ -20,15 +26,20 @@ public final class Ayarlar {
     private final String dbName;
     private final String botDbUser;
     private final String botDbPass;
+    private final String botToken;
+    private final String bindAdresi;
     private final int httpPort;
 
     private Ayarlar(String dbHost, int dbPort, String dbName,
-                    String botDbUser, String botDbPass, int httpPort) {
+                    String botDbUser, String botDbPass, String botToken,
+                    String bindAdresi, int httpPort) {
         this.dbHost = dbHost;
         this.dbPort = dbPort;
         this.dbName = dbName;
         this.botDbUser = botDbUser;
         this.botDbPass = botDbPass;
+        this.botToken = botToken;
+        this.bindAdresi = bindAdresi;
         this.httpPort = httpPort;
     }
 
@@ -36,11 +47,13 @@ public final class Ayarlar {
     public static Ayarlar ortamdan() {
         return new Ayarlar(
                 env("DB_HOST", "localhost"),
-                Integer.parseInt(env("DB_PORT", "5432")),
+                sayi("DB_PORT", "5432"),
                 env("DB_NAME", "mini_dealership"),
                 zorunlu("BOT_DB_USER"),
                 zorunlu("BOT_DB_PASS"),
-                Integer.parseInt(env("HTTP_PORT", "8080"))
+                gizli("BOT_TOKEN", 32),
+                env("BIND_ADRESI", "127.0.0.1"),
+                sayi("HTTP_PORT", "8080")
         );
     }
 
@@ -59,6 +72,28 @@ public final class Ayarlar {
         return v.trim();
     }
 
+    /**
+     * Gizli değer, en az {@code enAz} karakter. Kısa bir sır sessizce zayıf kalır;
+     * demo ortamında fark edilmez, sunucuda token katmanını işe yaramaz hale getirir.
+     */
+    private static String gizli(String ad, int enAz) {
+        String v = zorunlu(ad);
+        if (v.length() < enAz) {
+            throw new IllegalStateException(
+                    ad + " en az " + enAz + " karakter olmalı (openssl rand -hex 16 ile üretin).");
+        }
+        return v;
+    }
+
+    private static int sayi(String ad, String varsayilan) {
+        String v = env(ad, varsayilan);
+        try {
+            return Integer.parseInt(v);
+        } catch (NumberFormatException e) {
+            throw new IllegalStateException(ad + " sayısal olmalı, gelen: " + v, e);
+        }
+    }
+
     /** JDBC bağlantı adresi. Şifre burada değil, ayrı verilir. */
     public String jdbcUrl() {
         return "jdbc:postgresql://" + dbHost + ":" + dbPort + "/" + dbName;
@@ -66,5 +101,7 @@ public final class Ayarlar {
 
     public String botDbUser() { return botDbUser; }
     public String botDbPass() { return botDbPass; }
+    public String botToken() { return botToken; }
+    public String bindAdresi() { return bindAdresi; }
     public int httpPort() { return httpPort; }
 }

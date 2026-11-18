@@ -26,8 +26,8 @@ public final class SubeHandler extends BotHandler {
     private static final String SUBE_LISTESI_SQL =
             "SELECT sube_id, ad FROM sube WHERE sehir = ? ORDER BY ad";
 
-    public SubeHandler(Veritabani db) {
-        super(db);
+    public SubeHandler(Veritabani db, BotTokeni token) {
+        super(db, token);
     }
 
     @Override

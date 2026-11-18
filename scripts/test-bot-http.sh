@@ -15,6 +15,7 @@ DERLEME_ATLA=0
 
 PW=$(openssl rand -hex 12)
 BOTPW=$(openssl rand -hex 12)
+BOTTOKEN=$(openssl rand -hex 32)
 CONTAINER=md-test-bot-http-tmp
 PORT=5436
 HTTP_PORT=8099
@@ -203,7 +204,8 @@ docker exec -i "$CONTAINER" psql -U postgres -d postgres -q \
 
 echo "==> Backend başlatılıyor (port $HTTP_PORT)..."
 DB_HOST=127.0.0.1 DB_PORT=$PORT DB_NAME=postgres \
-BOT_DB_USER=bot_app BOT_DB_PASS="$BOTPW" HTTP_PORT=$HTTP_PORT \
+BOT_DB_USER=bot_app BOT_DB_PASS="$BOTPW" BOT_TOKEN="$BOTTOKEN" \
+BIND_ADRESI=127.0.0.1 HTTP_PORT=$HTTP_PORT \
   java -jar "$JAR" > /tmp/md-http-test.log 2>&1 &
 SRV_PID=$!
 
@@ -219,6 +221,7 @@ echo "==> HTTP senaryoları çalıştırılıyor..."
 
 # GUN yukarida (seed ile ayni sekilde) hesaplandi.
 TEL='X-Musteri-Telefon: +905321234567'
+TOK="X-Bot-Token: $BOTTOKEN"
 TABAN="http://127.0.0.1:$HTTP_PORT"
 GECEN=0
 KALAN=0
@@ -244,29 +247,29 @@ bekle() {
 
 echo "--- GET /bot/sube ---"
 bekle "Tüm şehirler listelenir" 200 '"sehirler":["Ankara","Antalya","Bursa","İstanbul","İzmir"]' \
-  -H "$TEL" "$TABAN/bot/sube"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/sube"
 bekle "Ankara iki şube döner" 200 '"sehir":"Ankara","subeler":[{"sube_id":2,"ad":"Yenimahalle"},{"sube_id":1,"ad":"Çankaya"}]' \
-  -H "$TEL" "$TABAN/bot/sube?sehir=Ankara"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/sube?sehir=Ankara"
 bekle "Olmayan şehir 404" 404 '"kod":"SEHIRDE_SUBE_YOK"' \
-  -H "$TEL" "$TABAN/bot/sube?sehir=Kars"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/sube?sehir=Kars"
 bekle "Yanlış yazım (ankara) 404" 404 '"kod":"SEHIRDE_SUBE_YOK"' \
-  -H "$TEL" "$TABAN/bot/sube?sehir=ankara"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/sube?sehir=ankara"
 
 echo "--- GET /bot/slot ---"
 bekle "Test sürüşü slotları ve imkanlar" 200 '"musait_calisan_sayisi":3' \
-  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN"
 bekle "Bilgi alanı saat aralığını taşır" 200 'Saat aralıkları: 10:00-12:00, 14:00-16:00' \
-  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN"
 bekle "Periyodik bakımda araç listesi boş" 200 '"musait_araclar":[]' \
-  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=PERIYODIK_BAKIM&tarih=$GUN"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=PERIYODIK_BAKIM&tarih=$GUN"
 
 echo "--- GET /bot/slot (doluluk senaryoları) ---"
 # 10:00 -> 1/3 calisan, 1/3 arac dolu; kalan 2 calisan + 2 arac musait
 bekle "SENARYO 1/3 calisan + 1/3 arac dolu -> 2 musait calisan" 200 \
   '"baslangic":"10:00","bitis":"11:00","musait_calisan_sayisi":2' \
-  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN"
 # 11:00 -> 3/3 calisan dolu: slot listede olmamali
-if curl -s -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN" \
+if curl -s -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN" \
      | grep -qF '"baslangic":"11:00"'; then
   echo "[FAIL] SENARYO tum calisanlar dolu -> 11:00 slotu elenmeli"
   KALAN=$((KALAN + 1))
@@ -275,7 +278,7 @@ else
   GECEN=$((GECEN + 1))
 fi
 # 14:00 -> 3/3 arac dolu: slot listede olmamali
-if curl -s -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN" \
+if curl -s -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN" \
      | grep -qF '"baslangic":"14:00"'; then
   echo "[FAIL] SENARYO tum araclar dolu -> 14:00 slotu elenmeli"
   KALAN=$((KALAN + 1))
@@ -285,9 +288,9 @@ else
 fi
 # 15:00 -> iptal edilmis randevu slotu yeniden acar
 bekle "SENARYO iptal edilen randevu slotu yeniden acar" 200 '"baslangic":"15:00"' \
-  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN"
 # arac_vin filtresi: dolu arac 10:00'da donmemeli
-if curl -s -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN&arac_vin=VIN00000000000001" \
+if curl -s -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN&arac_vin=VIN00000000000001" \
      | grep -qF '"baslangic":"10:00"'; then
   echo "[FAIL] SENARYO dolu arac icin 10:00 slotu donmemeli"
   KALAN=$((KALAN + 1))
@@ -298,34 +301,34 @@ fi
 # arac_vin filtresi: bos arac 15:00'te tek arac olarak doner
 bekle "SENARYO arac_vin=bos arac -> tek arac" 200 \
   '"musait_araclar":[{"vin":"VIN00000000000003"' \
-  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN&arac_vin=VIN00000000000003"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN&arac_vin=VIN00000000000003"
 # Hafta sonu: o gun mesai yok -> slot listesi bos
 PAZAR=$(date -v+7d -v+sun +%Y-%m-%d 2>/dev/null || date -v+sun +%Y-%m-%d)
 bekle "SENARYO pazar gunu slot yok (mesai disi)" 200 '"slotlar":[]' \
-  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$PAZAR"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$PAZAR"
 # Baska subede calisan/arac yok -> slot listesi bos
 bekle "SENARYO sube 2'de calisan yok -> slot yok" 200 '"slotlar":[]' \
-  -H "$TEL" "$TABAN/bot/slot?sube_id=2&tur_kodu=TEST_SURUSU&tarih=$GUN"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=2&tur_kodu=TEST_SURUSU&tarih=$GUN"
 bekle "Olmayan şube 404" 404 '"kod":"SUBE_YOK"' \
-  -H "$TEL" "$TABAN/bot/slot?sube_id=999&tur_kodu=TEST_SURUSU&tarih=$GUN"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=999&tur_kodu=TEST_SURUSU&tarih=$GUN"
 bekle "Olmayan tür 404" 404 '"kod":"TUR_YOK"' \
-  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=YOKTUR&tarih=$GUN"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=YOKTUR&tarih=$GUN"
 bekle "Bozuk tarih 400" 400 '"kod":"GECERSIZ_TARIH"' \
-  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=2026-13-45"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=2026-13-45"
 bekle "Geçmiş tarih 400" 400 '"kod":"GECMIS_TARIH"' \
-  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=2020-01-01"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=2020-01-01"
 bekle "21 günden uzak tarih 400" 400 '"kod":"COK_UZAK_TARIH"' \
-  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=2027-06-01"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=2027-06-01"
 bekle "Stokta olmayan VIN 404" 404 '"kod":"ARAC_STOKTA_YOK"' \
-  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN&arac_vin=VIN00000000000009"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN&arac_vin=VIN00000000000009"
 bekle "Zorunlu parametre eksik 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
-  -H "$TEL" "$TABAN/bot/slot?tur_kodu=TEST_SURUSU&tarih=$GUN"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?tur_kodu=TEST_SURUSU&tarih=$GUN"
 
 echo "--- GET /bot/slot (SERVIS_TESLIM) — içerik kontrolleri ---"
 TEL_S='X-Musteri-Telefon: +905550001177'
 
 # arac_vin verilmeden: yalnizca TESLIME_HAZIR araclar listelenmeli
-YANIT=$(curl -s -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN")
+YANIT=$(curl -s -H "$TOK" -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN")
 if printf '%s' "$YANIT" | grep -qF 'VIN00000000000022'; then
   echo "[PASS] Teslime hazir arac (022) slot listesinde var"; GECEN=$((GECEN + 1))
 else
@@ -355,58 +358,128 @@ else
 fi
 # Coklu acik kayit: yeni kayit TESLIME_HAZIR ise teslim edilebilmeli
 bekle "Coklu acik kayit: yeni kayit hazirsa teslim edilebilir" 200 '"ok":true' \
-  -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN&arac_vin=VIN00000000000023"
+  -H "$TOK" -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN&arac_vin=VIN00000000000023"
 
 echo "--- GET /bot/slot (SERVIS_TESLIM) ---"
 TEL_S='X-Musteri-Telefon: +905550001177'
 bekle "Servisten teslim: teslime hazir arac slot doner" 200 '"SERVIS_TESLIM"' \
-  -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN&arac_vin=VIN00000000000022"
+  -H "$TOK" -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN&arac_vin=VIN00000000000022"
 bekle "Servisten teslim: parca bekleyen arac 409" 409 '"kod":"SERVIS_TESLIM_HAZIR_DEGIL"' \
-  -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN&arac_vin=VIN00000000000021"
+  -H "$TOK" -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN&arac_vin=VIN00000000000021"
 bekle "409 yaniti son durumu ve tahmini tarihi tasir" 409 '"son_durum":"PARCA_BEKLENIYOR"' \
-  -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN&arac_vin=VIN00000000000021"
+  -H "$TOK" -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN&arac_vin=VIN00000000000021"
 bekle "409 yanitinda tahmini teslim tarihi var" 409 '"tahmini_teslim_tarihi":"' \
-  -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN&arac_vin=VIN00000000000021"
+  -H "$TOK" -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN&arac_vin=VIN00000000000021"
 bekle "Baska müşterinin servisteki aracı: açık kayıt yok" 404 '"kod":"ARAC_SERVISTE_DEGIL"' \
-  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN&arac_vin=VIN00000000000021"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN&arac_vin=VIN00000000000021"
 bekle "Servisten teslim: musteri kendi arac listesini gorur (arac_vin bos)" 200 '"SERVIS_TESLIM"' \
-  -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN"
+  -H "$TOK" -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN"
 
 echo "--- Sinir degerler ---"
 BUGUN=$(date +%Y-%m-%d)
 bekle "Bugun kabul edilir" 200 '"ok":true' \
-  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$BUGUN"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$BUGUN"
 G21=$(date -v+21d +%Y-%m-%d)
 bekle "Tam 21 gun ileri kabul edilir" 200 '"ok":true' \
-  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$G21"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$G21"
 G22=$(date -v+22d +%Y-%m-%d)
 bekle "22 gun reddedilir" 400 '"kod":"COK_UZAK_TARIH"' \
-  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$G22"
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$G22"
 
 echo "--- Guvenlik ---"
 bekle "SQL injection denemesi sehir'de" 404 '"kod":"SEHIRDE_SUBE_YOK"' \
-  -H "$TEL" --get --data-urlencode "sehir=Ankara' OR '1'='1" "$TABAN/bot/sube"
+  -H "$TOK" -H "$TEL" --get --data-urlencode "sehir=Ankara' OR '1'='1" "$TABAN/bot/sube"
 bekle "SQL injection denemesi tur_kodu'nda" 404 '"kod":"TUR_YOK"' \
-  -H "$TEL" --get --data-urlencode "tur_kodu=TEST_SURUSU' OR '1'='1" "$TABAN/bot/slot?sube_id=1&tarih=$GUN"
+  -H "$TOK" -H "$TEL" --get --data-urlencode "tur_kodu=TEST_SURUSU' OR '1'='1" "$TABAN/bot/slot?sube_id=1&tarih=$GUN"
 bekle "7 haneli telefon reddedilir (E.164 alt sinir)" 401 '"kod":"KIMLIK_YOK"' \
-  -H 'X-Musteri-Telefon: +1234567' "$TABAN/bot/sube"
+  -H "$TOK" -H 'X-Musteri-Telefon: +1234567' "$TABAN/bot/sube"
 bekle "15 haneli telefon kabul edilir (E.164 ust sinir)" 200 '"ok":true' \
-  -H 'X-Musteri-Telefon: +123456789012345' "$TABAN/bot/sube"
+  -H "$TOK" -H 'X-Musteri-Telefon: +123456789012345' "$TABAN/bot/sube"
 bekle "0 ile baslayan numara reddedilir" 401 '"kod":"KIMLIK_YOK"' \
-  -H 'X-Musteri-Telefon: +0123456789' "$TABAN/bot/sube"
+  -H "$TOK" -H 'X-Musteri-Telefon: +0123456789' "$TABAN/bot/sube"
 bekle "POST /bot/sube -> 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' \
-  -X POST -H "$TEL" "$TABAN/bot/sube"
+  -X POST -H "$TOK" -H "$TEL" "$TABAN/bot/sube"
 bekle "POST /bot/slot -> 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' \
-  -X POST -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN"
+  -X POST -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN"
 bekle "PUT /bot/sube -> 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' \
-  -X PUT -H "$TEL" "$TABAN/bot/sube"
+  -X PUT -H "$TOK" -H "$TEL" "$TABAN/bot/sube"
+
+echo "--- Kopru kimligi (token) ---"
+bekle "Token yok -> 401 YETKISIZ_ISTEK" 401 '"kod":"YETKISIZ_ISTEK"' \
+  -H "$TEL" "$TABAN/bot/sube"
+bekle "Yanlis token -> 401" 401 '"kod":"YETKISIZ_ISTEK"' \
+  -H "X-Bot-Token: yanlis-token" -H "$TEL" "$TABAN/bot/sube"
+bekle "Bos token -> 401" 401 '"kod":"YETKISIZ_ISTEK"' \
+  -H "X-Bot-Token;" -H "$TEL" "$TABAN/bot/sube"
+bekle "Dogru token -> 200" 200 '"ok":true' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/sube"
+bekle "Token var ama musteri kimligi yok -> 401 KIMLIK_YOK" 401 '"kod":"KIMLIK_YOK"' \
+  -H "$TOK" "$TABAN/bot/sube"
+bekle "Saglik kontrolu token gerektirmez" 200 'ok' "$TABAN/saglik"
+
+echo "--- Kopru kimligi (ince senaryolar) ---"
+# Esit uzunlukta, tek bayti farkli token
+SAHTE=$(printf '%s' "$BOTTOKEN" | sed 's/^./0/; s/^0/1/' )
+[ "$SAHTE" = "$BOTTOKEN" ] && SAHTE="1$(printf '%s' "$BOTTOKEN" | cut -c2-)"
+bekle "Ayni uzunlukta yanlis token -> 401" 401 '"kod":"YETKISIZ_ISTEK"' \
+  -H "X-Bot-Token: $SAHTE" -H "$TEL" "$TABAN/bot/sube"
+# Token denetimi yontem denetiminden once: token'siz POST 405 degil 401
+bekle "Token'siz POST -> 401 (405 degil)" 401 '"kod":"YETKISIZ_ISTEK"' \
+  -X POST -H "$TEL" "$TABAN/bot/sube"
+# Token kurallari yalniz /bot/sube'da degil, /bot/slot'ta da gecerli
+bekle "Token'siz /bot/slot -> 401" 401 '"kod":"YETKISIZ_ISTEK"' \
+  -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN"
 
 echo "--- Kimlik ---"
 bekle "Kimliksiz istek 401" 401 '"kod":"KIMLIK_YOK"' \
-  "$TABAN/bot/sube"
+  -H "$TOK" "$TABAN/bot/sube"
 bekle "Geçersiz kimlik 401" 401 '"kod":"KIMLIK_YOK"' \
-  -H 'X-Musteri-Telefon: abc' "$TABAN/bot/sube"
+  -H "$TOK" -H 'X-Musteri-Telefon: abc' "$TABAN/bot/sube"
 bekle "Sağlık kontrolü" 200 'ok' "$TABAN/saglik"
+
+echo "--- Baslangic guvenlik kontrolleri ---"
+
+# baslat_yok <aciklama> <token_degeri|__YOK__>
+baslat_yok() {
+  aciklama=$1; deger=$2; log=/tmp/md-notoken.log
+  rm -f "$log"
+  if [ "$deger" = "__YOK__" ]; then
+    if env -u BOT_TOKEN DB_HOST=127.0.0.1 DB_PORT=$PORT DB_NAME=postgres \
+         BOT_DB_USER=bot_app BOT_DB_PASS="$BOTPW" HTTP_PORT=$((HTTP_PORT + 1)) \
+         java -jar "$JAR" > "$log" 2>&1; then
+      basladi=1
+    else
+      basladi=0
+    fi
+  else
+    if BOT_TOKEN="$deger" DB_HOST=127.0.0.1 DB_PORT=$PORT DB_NAME=postgres \
+         BOT_DB_USER=bot_app BOT_DB_PASS="$BOTPW" HTTP_PORT=$((HTTP_PORT + 1)) \
+         java -jar "$JAR" > "$log" 2>&1; then
+      basladi=1
+    else
+      basladi=0
+    fi
+  fi
+
+  if [ "$basladi" -eq 1 ]; then
+    echo "[FAIL] $aciklama — uygulama basladi"; KALAN=$((KALAN + 1))
+  elif grep -qF 'BOT_TOKEN' "$log"; then
+    echo "[PASS] $aciklama"; GECEN=$((GECEN + 1))
+  else
+    echo "[FAIL] $aciklama — basarisiz ama nedeni BOT_TOKEN degil"; KALAN=$((KALAN + 1))
+  fi
+}
+
+baslat_yok "BOT_TOKEN yoksa uygulama baslamiyor" __YOK__
+baslat_yok "BOT_TOKEN yalnizca bosluksa uygulama baslamiyor" "   "
+baslat_yok "BOT_TOKEN 32 karakterden kisaysa uygulama baslamiyor" "kisabirtoken"
+
+# Token degeri log'a sizmamali
+if grep -qF "$BOTTOKEN" /tmp/md-http-test.log; then
+  echo "[FAIL] BOT_TOKEN degeri log dosyasina sizdi"; KALAN=$((KALAN + 1))
+else
+  echo "[PASS] BOT_TOKEN degeri log'a sizmiyor"; GECEN=$((GECEN + 1))
+fi
 
 echo ""
 echo "=========================================="

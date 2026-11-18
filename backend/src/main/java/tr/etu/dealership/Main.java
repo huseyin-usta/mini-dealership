@@ -3,12 +3,14 @@ package tr.edu.etu.dealership;
 import com.sun.net.httpserver.HttpServer;
 import tr.edu.etu.dealership.config.Ayarlar;
 import tr.edu.etu.dealership.db.Veritabani;
+import tr.edu.etu.dealership.web.BotTokeni;
 import tr.edu.etu.dealership.web.HttpYardimci;
 import tr.edu.etu.dealership.web.SlotHandler;
 import tr.edu.etu.dealership.web.SubeHandler;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Logger;
 
@@ -20,6 +22,7 @@ public final class Main {
     public static void main(String[] args) throws IOException {
         Ayarlar ayarlar = Ayarlar.ortamdan();
         Veritabani db = new Veritabani(ayarlar);
+        BotTokeni token = new BotTokeni(ayarlar.botToken());
 
         if (!db.hazirMi()) {
             LOG.severe("Veritabanına bağlanılamadı: " + ayarlar.jdbcUrl());
@@ -27,20 +30,24 @@ public final class Main {
             System.exit(1);
         }
 
-        HttpServer sunucu = HttpServer.create(new InetSocketAddress(ayarlar.httpPort()), 0);
-        sunucu.setExecutor(Executors.newFixedThreadPool(8));
+        // Bind adresi env'den gelir; varsayılan yalnızca yerel arayüz (127.0.0.1).
+        HttpServer sunucu = HttpServer.create(
+                new InetSocketAddress(ayarlar.bindAdresi(), ayarlar.httpPort()), 0);
+        ExecutorService havuz = Executors.newFixedThreadPool(8);
+        sunucu.setExecutor(havuz);
 
         // Bot API (docs/api/bot-sozlesmesi.md)
-        sunucu.createContext("/bot/sube", new SubeHandler(db));
-        sunucu.createContext("/bot/slot", new SlotHandler(db));
+        sunucu.createContext("/bot/sube", new SubeHandler(db, token));
+        sunucu.createContext("/bot/slot", new SlotHandler(db, token));
         sunucu.createContext("/saglik", HttpYardimci.saglik(db));
 
         sunucu.start();
-        LOG.info("Backend dinliyor: http://localhost:" + ayarlar.httpPort());
+        LOG.info("Backend dinliyor: http://" + ayarlar.bindAdresi() + ":" + ayarlar.httpPort());
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             LOG.info("Kapatılıyor...");
             sunucu.stop(0);
+            havuz.shutdown();
             db.close();
         }));
     }

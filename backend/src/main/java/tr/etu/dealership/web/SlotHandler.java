@@ -131,8 +131,8 @@ public final class SlotHandler extends BotHandler {
              ORDER BY ts.baslangic
             """;
 
-    public SlotHandler(Veritabani db) {
-        super(db);
+    public SlotHandler(Veritabani db, BotTokeni token) {
+        super(db, token);
     }
 
     @Override
