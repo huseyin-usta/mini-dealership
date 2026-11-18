@@ -57,7 +57,7 @@ ikisi birlikte kullanılır.
 | Sınıf | Örnek | Davranış |
 |---|---|---|
 | Kullanıcıya gösterilir | `SEHIRDE_SUBE_YOK`, `SLOT_DOLU`, `ARAC_YOK`, `RANDEVU_YOK`, `GECMIS_TARIH` | LLM müşteriyle diyalog kurar, alternatif önerir |
-| LLM içi | `YETKI_YOK`, `SERVIS_KAPALI` | LLM müşteriye söylemez, başka çalışan/şube/gün arar |
+| LLM içi | `YETKI_YOK` | LLM müşteriye söylemez, başka çalışan/şube/gün arar |
 | Sistem | `SISTEM_HATASI` | "Şu an hizmet veremiyorum" |
 
 ## Endpoint'ler
@@ -65,8 +65,8 @@ ikisi birlikte kullanılır.
 | # | Endpoint | LLM tool adı | Amaç |
 |---|---|---|---|
 | 1 | `GET /bot/sube` | `sube_listele` | Şehir ve şube listesi |
-| 2 | `GET /bot/slot` | `musait_slotlar` | Müsait randevu saatleri |
-| 3 | `GET /bot/arac` | `arac_listele` | Stoktaki ve yoldaki araçlar |
+| 2 | `GET /bot/slot` | `musait_slotlar` | Müsait randevu saatleri ve o saatteki imkanlar |
+| 3 | `GET /bot/arac` | `arac_listele` | Stoktaki/yoldaki araçlar veya müşterinin araçları |
 | 4 | `POST /bot/randevu` | `randevu_olustur` | Randevu oluşturma |
 | 5 | `GET /bot/randevu` | `randevularim` | Müşterinin randevu geçmişi |
 | 6 | `POST /bot/randevu/{id}/iptal` | `randevu_iptal` | Randevu iptali |
@@ -187,6 +187,253 @@ SELECT sube_id, ad FROM sube WHERE sehir = $1 ORDER BY ad;
         "description": "Şehir adı (ör. Ankara). Boş bırakılırsa yalnızca şehir adları listelenir."
       }
     }
+  }
+}
+```
+
+---
+
+## 2. `GET /bot/slot`
+
+Bir şube, randevu türü ve gün için **müsait saat dilimlerini** ve her dilimdeki
+**imkanları** (müsait çalışan sayısı, müsait araçlar) döner.
+
+### İmkan modeli
+
+Bir saat dilimi ancak o türün gerektirdiği bütün kaynaklar hazırsa müsait sayılır:
+
+| Tür | Çalışan | Araç |
+|---|---|---|
+| `TEST_SURUSU` | yetkinlik şartı var | o şubede `STOKTA` ve o saat boş |
+| `TESLIMAT` | departman: `SATIS` | teslim edilecek araç |
+| `ARAC_INCELEME`, `SATIN_ALIM` | departman: `SATIS` | gerekmez |
+| `PERIYODIK_BAKIM`, `SERVIS_GIRIS` | departman: `SERVIS` | gerekmez (araç müşteride) |
+| `SERVIS_TESLIM` | departman: `SERVIS` | açık servis kaydındaki araç |
+
+Sorgu bu nedenle **sol birleştirme** ile kurulur: araç gerektirmeyen türlerde araç
+tarafı boş kalır ve slot elenmez.
+
+Hesaplama sırası:
+
+1. `tur_saat` ve `mesai` kesişiminden o güne ait **olası dilimler** üretilir
+2. Bu dilimlerden o tür için **uygun ve boş** çalışanlar bulunur
+3. Araç gerektiren türlerde **uygun ve boş** araçlar bulunur
+4. Çalışanı olmayan (veya araç gerekiyorsa aracı da olmayan) dilimler elenir
+
+### İstek
+
+```
+GET /bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=2026-11-20
+GET /bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=2026-11-20&arac_vin=VIN12345678901234
+```
+
+| Header | Zorunlu | Değer |
+|---|---|---|
+| `X-Musteri-Telefon` | ✅ | `+905321234567` |
+
+| Query | Tip | Zorunlu | Açıklama |
+|---|---|---|---|
+| `sube_id` | integer | ✅ | Şube kimliği |
+| `tur_kodu` | string | ✅ | `randevu_turu.tur_kodu` |
+| `tarih` | date | ✅ | `YYYY-MM-DD`; bugünden itibaren en fazla 21 gün ileri |
+| `arac_vin` | string | ❌ | Verilirse yalnızca o araç boş olan dilimler döner |
+
+### Başarılı yanıt — `200 OK`
+
+```json
+{
+  "ok": true,
+  "veri": {
+    "tarih": "2026-11-20",
+    "tur_kodu": "TEST_SURUSU",
+    "bilgi": "Test Sürüşü 10:00-12:00 ve 14:00-16:00 arasında yapılır.",
+    "slotlar": [
+      {
+        "baslangic": "10:00",
+        "bitis": "11:00",
+        "musait_calisan_sayisi": 2,
+        "musait_araclar": [
+          { "vin": "VIN12345678901234", "model": "Ioniq 5", "paket": "Advance", "renk": "Beyaz" },
+          { "vin": "VIN56789012345678", "model": "Tucson",  "paket": "Elite",   "renk": "Gri" }
+        ]
+      },
+      {
+        "baslangic": "14:00",
+        "bitis": "15:00",
+        "musait_calisan_sayisi": 1,
+        "musait_araclar": [
+          { "vin": "VIN12345678901234", "model": "Ioniq 5", "paket": "Advance", "renk": "Beyaz" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+- `slotlar` **yalnızca müsait** dilimleri içerir; dolu dilim listeye girmez.
+- `bilgi` **her zaman** döner; boş listede de LLM'in neden boş olduğunu anlamasını sağlar.
+- `musait_araclar` yalnızca araç gerektiren türlerde doludur; diğerlerinde `[]`.
+- Çalışan kimliği ve adı **dönmez**; atamayı backend yapar (bkz. `POST /bot/randevu`).
+
+Boş liste örneği:
+
+```json
+{
+  "ok": true,
+  "veri": {
+    "tarih": "2026-11-22",
+    "tur_kodu": "TEST_SURUSU",
+    "bilgi": "Test Sürüşü 10:00-12:00 ve 14:00-16:00 arasında yapılır.",
+    "slotlar": []
+  }
+}
+```
+
+### Hata yanıtları
+
+| Kod | HTTP | `kullaniciya_goster` | Koşul |
+|---|---|---|---|
+| `SUBE_YOK` | 404 | true | `sube_id` bulunamadı |
+| `TUR_YOK` | 404 | true | `tur_kodu` bulunamadı |
+| `GECERSIZ_TARIH` | 400 | true | Tarih `YYYY-MM-DD` biçiminde değil |
+| `GECMIS_TARIH` | 400 | true | Tarih bugünden önce |
+| `COK_UZAK_TARIH` | 400 | true | Bugünden 21 günden fazla ileri |
+| `ARAC_STOKTA_YOK` | 404 | true | `arac_vin` verildi; test sürüşü/teslimat için araç o şubede `STOKTA` değil |
+| `ARAC_SERVISTE_DEGIL` | 404 | true | `arac_vin` verildi; servisten teslim için açık servis kaydı yok |
+| `SERVIS_TESLIM_HAZIR_DEGIL` | 409 | true | Araç serviste ama teslime hazır değil; `detay` son durumu ve tahmini teslim tarihini taşır |
+| `GECERSIZ_PARAMETRE` | 400 | true | Parametreler birlikte kullanılamaz (`kapsam=benim` + `arac_vin`) |
+
+**Not:** O gün o tür için hiç saat tanımlı değilse (hafta sonu, mesai dışı veya
+türün penceresi yok) bu bir hata değildir: `slotlar: []` ve açıklayıcı `bilgi`
+döner. LLM alternatif gün önerir.
+
+`SERVIS_TESLIM_HAZIR_DEGIL` örneği:
+
+```json
+{
+  "ok": false,
+  "hata": {
+    "kod": "SERVIS_TESLIM_HAZIR_DEGIL",
+    "mesaj": "Aracınız serviste; mevcut durumu: Parça Bekleniyor.",
+    "kullaniciya_goster": true,
+    "detay": {
+      "servis_kaydi_id": 42,
+      "son_durum": "PARCA_BEKLENIYOR",
+      "tahmini_teslim_tarihi": "2026-11-25"
+    }
+  }
+}
+```
+
+### Veritabanı
+
+Aşağıdaki sorgu doğrulanmıştır (bkz. `scripts/test-bot-api.sh`). Parametreler:
+`$1` tarih, `$2` tur_kodu, `$3` sube_id, `$4` arac_vin (NULL olabilir).
+
+```sql
+WITH olası AS (
+    -- 1) O güne ait olası dilimler: tur_saat penceresi içinde süre kadar adım
+    SELECT gs AS baslangic,
+           gs + (rt.sure_dakika * interval '1 minute') AS bitis
+      FROM randevu_turu rt
+      JOIN tur_saat ts ON ts.tur_kodu = rt.tur_kodu
+      JOIN mesai    m  ON m.gun = ts.gun
+     CROSS JOIN generate_series(
+           $1::date + ts.baslangic,
+           $1::date + ts.bitis - (rt.sure_dakika * interval '1 minute'),
+           (rt.sure_dakika * interval '1 minute')
+     ) AS gs
+     WHERE rt.tur_kodu = $2
+       AND extract(isodow FROM $1::date) = ts.gun
+       AND m.acilis <= ts.baslangic AND ts.bitis <= m.kapanis
+),
+tur AS (
+    -- 2) Türün kuralları; araç yalnızca üç türde gerekir
+    SELECT rt.yetkinlik_id, rt.departman,
+           rt.tur_kodu IN ('TEST_SURUSU', 'TESLIMAT', 'SERVIS_TESLIM') AS arac_gerekli
+      FROM randevu_turu rt
+     WHERE rt.tur_kodu = $2
+),
+uygun_calisan AS (
+    -- 3) Şubede, aktif, doğru departmanda ve yetkinliği olan çalışanlar
+    SELECT c.calisan_id
+      FROM calisan c, tur t
+     WHERE c.sube_id = $3
+       AND c.aktif_mi
+       AND c.departman = t.departman
+       AND (t.yetkinlik_id IS NULL OR EXISTS (
+             SELECT 1 FROM calisan_yetkinlik cy
+              WHERE cy.calisan_id = c.calisan_id
+                AND cy.yetkinlik_id = t.yetkinlik_id))
+),
+uygun_arac AS (
+    -- 4) Şubede stokta olan araçlar
+    SELECT a.vin, v.paket_adi, md.ad AS model, a.renk
+      FROM arac a
+      JOIN versiyon v ON v.versiyon_id = a.versiyon_id
+      JOIN model   md ON md.model_id   = v.model_id
+     WHERE a.sube_id = $3 AND a.durum = 'STOKTA'
+)
+SELECT o.baslangic::time AS baslangic,
+       o.bitis::time     AS bitis,
+       -- Boş çalışan sayısı
+       (SELECT count(*) FROM uygun_calisan uc
+         WHERE NOT EXISTS (SELECT 1 FROM v_dolu_slot d
+                            WHERE d.calisan_id = uc.calisan_id
+                              AND tsrange(d.baslangic, d.bitis)
+                                  && tsrange(o.baslangic, o.bitis))) AS musait_calisan_sayisi,
+       -- Boş araçlar: araç gerektirmeyen türlerde daima boş dizi
+       CASE WHEN t.arac_gerekli THEN
+         COALESCE((SELECT json_agg(json_build_object(
+                              'vin',   ua.vin,
+                              'model', ua.model,
+                              'paket', ua.paket_adi,
+                              'renk',  ua.renk))
+                     FROM uygun_arac ua
+                    WHERE ($4::varchar IS NULL OR ua.vin = $4)
+                      AND NOT EXISTS (SELECT 1 FROM v_dolu_slot d
+                                       WHERE d.arac_vin = ua.vin
+                                         AND tsrange(d.baslangic, d.bitis)
+                                             && tsrange(o.baslangic, o.bitis))), '[]'::json)
+       ELSE '[]'::json END AS musait_araclar
+  FROM olası o, tur t
+ WHERE (SELECT count(*) FROM uygun_calisan uc
+         WHERE NOT EXISTS (SELECT 1 FROM v_dolu_slot d
+                            WHERE d.calisan_id = uc.calisan_id
+                              AND tsrange(d.baslangic, d.bitis)
+                                  && tsrange(o.baslangic, o.bitis))) > 0
+   -- Araç gerekiyorsa en az bir müsait araç da şart
+   AND (NOT t.arac_gerekli OR EXISTS (
+         SELECT 1 FROM uygun_arac ua
+          WHERE ($4::varchar IS NULL OR ua.vin = $4)
+            AND NOT EXISTS (SELECT 1 FROM v_dolu_slot d
+                             WHERE d.arac_vin = ua.vin
+                               AND tsrange(d.baslangic, d.bitis)
+                                   && tsrange(o.baslangic, o.bitis))))
+ ORDER BY o.baslangic
+```
+
+- Tablolar: `tur_saat`, `mesai`, `randevu_turu`, `calisan`, `calisan_yetkinlik`, `arac`
+- View: `v_dolu_slot` — iptal edilmemiş randevuların **zaman/kaynak** bilgisi (PII yok)
+- Rol: `bot`
+- RLS: `v_dolu_slot` `security_barrier` ile tanımlı ve başka müşterilerin
+  randevularını **yalnızca zaman/kaynak olarak** gösterir; kimlik bilgisi taşımaz
+
+### LLM tool tanımı
+
+```json
+{
+  "name": "musait_slotlar",
+  "description": "Bir şubede belirli bir gün için müsait randevu saatlerini listeler. Her saat dilimiyle birlikte o saatte müsait araçları döner. Boş liste dönerse o gün uygun saat yoktur; bilgi alanındaki saat aralığını müşteriye söyleyip başka gün öner.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "sube_id":   { "type": "integer", "description": "Şube kimliği" },
+      "tur_kodu":  { "type": "string",  "description": "Randevu türü kodu (ör. TEST_SURUSU)" },
+      "tarih":     { "type": "string",  "description": "Tarih, YYYY-MM-DD. Bugünden en fazla 21 gün ileri." },
+      "arac_vin":  { "type": "string",  "description": "Yalnızca belirli bir araç için müsaitlik soruluyorsa araç VIN'i." }
+    },
+    "required": ["sube_id", "tur_kodu", "tarih"]
   }
 }
 ```
