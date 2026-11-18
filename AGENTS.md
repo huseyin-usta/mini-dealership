@@ -136,6 +136,23 @@ Docker Compose. Panel, sözleşme dondurulduktan sonra mock ile paralel başlaya
 - **Review akışı:** dosyalar parça parça yazılır (agent yazar → kullanıcı
   review eder → onaydan sonra commit). Tablo başına commit yok; DDL mantıklı
   bloklar halinde, doküman değişiklikleri ayrı commit
+
+### Kalite kuralları (ihlal edilemez)
+
+1. **Test etmeden commit yok.** Yazılan her davranış, commit'ten önce kanıtlanır.
+2. **Manuel test yok.** Testler, gerçek kullanıcının eriştiği arayüzden geçmeli:
+   bot için HTTP endpoint'e gerçek istek (LLM/köprü gibi), panel için HTTP,
+   DB davranışı için aynı rol ve aynı oturum değişkenleriyle bağlantı.
+   "SQL'i ben elle çalıştırdım, çalışıyor" kanıt sayılmaz.
+3. **Testler derin ve anlamlı olmalı.** Mutlu yol testi yeterli değil; sınır
+   değerler, yetki reddi, fail-closed davranışı, eşzamanlılık/çakışma,
+   yanlış girdi ve regresyon senaryoları kapsanır. Test, implementasyon
+   detayını değil sözleşmedeki davranışı doğrular.
+4. **Bir adım bitmeden ve review edilmeden sonrakine geçilmez.** Bitmiş sayılmak
+   için: sözleşme + kod + testler + canlı doğrulama. Küçük görevler
+   `code-reviewer` subagent'ı ile (deepseek modeli) review edilir; kapsamlı
+   turda güçlü model kullanılır. Review bulgusu kapatılmadan adım kapanmaz.
+
 - Geliştirme sırası (spec'ten): EER + şema → veri üretici → sorgular/indeks
   analizi → Java backend → panel → köprü entegrasyonu. Yeni işe spec'te
   karşılığı yoksa önce spec'e ekle
