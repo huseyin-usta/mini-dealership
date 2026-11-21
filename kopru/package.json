@@ -1,0 +1,21 @@
+{
+  "name": "mini-dealership-kopru",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "WhatsApp köprüsü: Baileys oturumu + backend /bot/mesaj çağrısı. İş mantığı yok.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "7.0.0-rc13",
+    "dotenv": "^17.2.3",
+    "pino": "^10.0.0",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0"
+  }
+}

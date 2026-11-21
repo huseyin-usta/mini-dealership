@@ -19,6 +19,7 @@ pgdata/
 *.dump
 
 # Baileys WhatsApp oturumu (kimlik bilgisi içerir)
+kopru/auth/
 auth_info*/
 .baileys*/
 
