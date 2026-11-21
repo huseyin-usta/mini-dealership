@@ -266,6 +266,28 @@ Yanıtta `sonraki_once` (daha eski mesaj yoksa `null`).
 
 Salt-okunur: `personel` rolünün `mesaj` tablosunda yazma yetkisi yok.
 
+## 11. `GET /panel/rapor/ozet` — İstatistikler
+
+`baslangic`, `bitis` (tarih, zorunlu), `sube_id` (ops.). Rol: `rapor`.
+
+Dönen bloklar: şube doluluk, randevu türü dağılımı, kaynak dağılımı
+(WhatsApp/panel), iptal ve gelmeme oranı, test sürüşünden satışa dönüşüm.
+Kaynak: `v_rapor_randevu` ve `docs/analiz/sorgular.sql`'deki sorguların
+tarih parametreli halleri.
+
+## 12. `GET /panel/rapor/randevu.xlsx` — Excel dışa aktarım
+
+Aynı parametreler. Yanıt bir `.xlsx` dosyasıdır
+(`Content-Disposition: attachment; filename="randevular_2026-11-01_2026-11-30.xlsx"`),
+zarf yok. Hata olursa normal JSON zarfı döner.
+
+- **Tek yönlü:** yalnızca DB → Excel. Excel'den içe aktarım ucu **yok**.
+- Kaynak `v_rapor_randevu`, rol `rapor`: müşteri adı ve telefonu **maskeli**
+  çıkar. Excel dosyası paylaşılabilir bir belge olduğu için PII içermemesi
+  DB rolüyle garanti edilir, panel koduna güvenilmez.
+- Sayfalar: "Randevular" (satır başına bir randevu), "Özet" (11'deki bloklar).
+- En fazla 100.000 satır; aşılırsa `400 ARALIK_COK_GENIS`.
+
 ---
 
 ## Açık kararlar (backend sahibiyle konuşulacak)
