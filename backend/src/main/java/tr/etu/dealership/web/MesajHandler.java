@@ -5,7 +5,7 @@ import com.sun.net.httpserver.HttpExchange;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tr.edu.etu.dealership.bot.BotAraclari;
-import tr.edu.etu.dealership.bot.GeminiIstemci;
+import tr.edu.etu.dealership.bot.LlmIstemci;
 import tr.edu.etu.dealership.db.BotKimligi;
 import tr.edu.etu.dealership.db.MusteriDeposu;
 import tr.edu.etu.dealership.db.Veritabani;
@@ -89,12 +89,12 @@ public final class MesajHandler extends BotHandler {
              LIMIT 1
             """;
 
-    private final GeminiIstemci gemini;
+    private final LlmIstemci gemini;
     private final BotAraclari araclar;
     private final String sistemPromptuSablonu;
 
     public MesajHandler(Veritabani db, BotTokeni token,
-                        GeminiIstemci gemini, BotAraclari araclar) {
+                        LlmIstemci gemini, BotAraclari araclar) {
         super(db, token);
         this.gemini = gemini;
         this.araclar = araclar;
@@ -168,7 +168,7 @@ public final class MesajHandler extends BotHandler {
                 if (System.nanoTime() > bitis) {
                     throw new IOException("LLM süre bütçesi aşıldı");
                 }
-                GeminiIstemci.Yanit yanit = gemini.uret(
+                LlmIstemci.Yanit yanit = gemini.uret(
                         sistemPromptu(), icerik, BotAraclari.bildirimler());
 
                 if (yanit.cagrilar().isEmpty()) {
@@ -179,7 +179,7 @@ public final class MesajHandler extends BotHandler {
                 icerik.add(Map.of("role", "model", "parts", yanit.hamParcalar()));
 
                 List<Map<String, Object>> fnParcalari = new ArrayList<>();
-                for (GeminiIstemci.Cagri cagri : yanit.cagrilar()) {
+                for (LlmIstemci.Cagri cagri : yanit.cagrilar()) {
                     if (++cagriSayisi > AZAMI_ARAC_CAGRISI) {
                         throw new IOException("Araç çağrısı bütçesi aşıldı");
                     }

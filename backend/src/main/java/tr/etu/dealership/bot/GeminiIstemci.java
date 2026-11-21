@@ -24,20 +24,7 @@ import java.util.Map;
  * içeriği, araç (function declaration) bildirimleri ve yanıttaki metin/çağrı
  * parçaları.
  */
-public final class GeminiIstemci {
-
-    /** Modelin döndürdüğü tek bir araç çağrısı. */
-    public record Cagri(String ad, Map<String, Object> args) {
-    }
-
-    /**
-     * Modelin yanıtı: metin, araç çağrıları ve model turunun ham parçaları.
-     * Ham parçalar sonraki istekte geri gönderilir; Gemini kendi functionCall
-     * parçalarını konuşma geçmişinde görmeyi bekler.
-     */
-    public record Yanit(String metin, List<Cagri> cagrilar,
-                        List<Map<String, Object>> hamParcalar) {
-    }
+public final class GeminiIstemci implements LlmIstemci {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Duration ZAMAN_ASIMI = Duration.ofSeconds(30);
@@ -55,13 +42,14 @@ public final class GeminiIstemci {
         this.url = ayarlar.geminiUrl();
     }
 
+    @Override
     public boolean hazirMi() {
         return apiKey != null && !apiKey.isBlank();
     }
 
-    /** Model adı (yanıt etiketlerinde kullanılır). */
-    public String modelAdi() {
-        return model;
+    @Override
+    public String etiket() {
+        return "gemini/" + model;
     }
 
     /**
@@ -71,6 +59,7 @@ public final class GeminiIstemci {
      * @param icerik         konuşma geçmişi + son mesaj (Gemini {@code contents} biçimi)
      * @param araclar        function declaration listesi (boş olabilir)
      */
+    @Override
     public Yanit uret(String sistemTalimati, List<Map<String, Object>> icerik,
                       List<Map<String, Object>> araclar) throws IOException, InterruptedException {
         ObjectNode govde = MAPPER.createObjectNode();
@@ -138,7 +127,7 @@ public final class GeminiIstemci {
         }
 
         StringBuilder metin = new StringBuilder();
-        List<Cagri> cagrilar = new ArrayList<>();
+        List<LlmIstemci.Cagri> cagrilar = new ArrayList<>();
         for (JsonNode parca : aday.path("parts")) {
             // "thought" parçaları modelin iç muhakemesidir; müşteriye gitmez.
             // (Gemma 4 ve Gemini "thinking" modelleri bu parçayı döndürür.)
@@ -150,7 +139,7 @@ public final class GeminiIstemci {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> args = MAPPER.convertValue(
                         fc.path("args"), Map.class);
-                cagrilar.add(new Cagri(fc.get("name").asText(), args));
+                cagrilar.add(new LlmIstemci.Cagri(fc.get("name").asText(), args));
             }
         }
 

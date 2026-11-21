@@ -1459,6 +1459,54 @@ else
   echo "[FAIL] Mesaj: anahtarsiz yanit $KOD_NK"; KALAN=$((KALAN + 1))
 fi
 
+echo "--- Mistral/OpenAI adaptoru (ayni davranis) ---"
+MPORT=$((HTTP_PORT + 3))
+DB_HOST=127.0.0.1 DB_PORT=$PORT DB_NAME=postgres BOT_DB_USER=bot_app \
+BOT_DB_PASS="$BOTPW" BOT_TOKEN="$BOTTOKEN" BIND_ADRESI=127.0.0.1 HTTP_PORT=$MPORT \
+LLM_SAGLAYICI=mistral MISTRAL_API_KEY=test-anahtar MISTRAL_MODEL=test-model \
+MISTRAL_URL="http://127.0.0.1:$GEMINI_PORT/v1" \
+  java -jar "$JAR" >/tmp/md-mistral.log 2>&1 &
+MPID=$!
+for i in $(seq 1 40); do
+  curl -fsS "http://127.0.0.1:$MPORT/saglik" >/dev/null 2>&1 && break
+  sleep 0.5
+done
+MTEL='X-Musteri-Telefon: +905550008801'
+MISTRAL_M=$(curl -s -w '\n%{http_code}' -X POST -H "$TOK" -H "$MTEL" \
+  -H 'Content-Type: application/json' -d '{"metin":"cumartesi test surusu"}' \
+  "http://127.0.0.1:$MPORT/bot/mesaj")
+MKOD=$(printf '%s' "$MISTRAL_M" | tail -n1)
+MGOV=$(printf '%s' "$MISTRAL_M" | sed '$d')
+if [ "$MKOD" = "200" ] && printf '%s' "$MGOV" | grep -qF 'ARAC_SONUC' \
+   && printf '%s' "$MGOV" | grep -qF 'slotlar' \
+   && printf '%s' "$MGOV" | grep -qF '"arac_cagrisi":1'; then
+  echo "[PASS] Mistral: arac dongusu calisiyor (gercek /bot/slot cagrildi)"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Mistral: arac dongusu yanlis"; echo "       HTTP $MKOD $MGOV"; KALAN=$((KALAN + 1))
+fi
+# Idempotency ayni davranis
+MKID="wamid.MISTRAL-$(date +%s)"
+MI1=$(curl -s -X POST -H "$TOK" -H "$MTEL" -H 'Content-Type: application/json' \
+  -d "{\"metin\":\"tekrar\",\"kaynak_id\":\"$MKID\"}" "http://127.0.0.1:$MPORT/bot/mesaj")
+MI2=$(curl -s -X POST -H "$TOK" -H "$MTEL" -H 'Content-Type: application/json' \
+  -d "{\"metin\":\"tekrar\",\"kaynak_id\":\"$MKID\"}" "http://127.0.0.1:$MPORT/bot/mesaj")
+if printf '%s' "$MI2" | grep -qF '"tekrar":true'; then
+  echo "[PASS] Mistral: idempotency calisiyor"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Mistral: idempotency yok"; echo "       2: $MI2"; KALAN=$((KALAN + 1))
+fi
+# Ariza -> 503
+MA=$(curl -s -w '\n%{http_code}' -X POST -H "$TOK" -H "$MTEL" \
+  -H 'Content-Type: application/json' -d '{"metin":"ARIZA"}' "http://127.0.0.1:$MPORT/bot/mesaj")
+MKA=$(printf '%s' "$MA" | tail -n1)
+if [ "$MKA" = "503" ] && printf '%s' "$MA" | grep -qF 'LLM_UNAVAILABLE'; then
+  echo "[PASS] Mistral: LLM arizasi -> 503"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Mistral: ariza yaniti ($MKA)"; KALAN=$((KALAN + 1))
+fi
+kill $MPID 2>/dev/null || true
+wait $MPID 2>/dev/null || true
+
 echo "--- Baslangic guvenlik kontrolleri ---"
 
 # baslat_yok <aciklama> <token_degeri|__YOK__>

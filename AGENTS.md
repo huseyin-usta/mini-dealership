@@ -51,11 +51,13 @@ session'lara ve ekip arkadaşına bağlam aktarımı içindir.
   HTTP uçlarına `KENDI_URL` üzerinden çağrılır. `GEMINI_API_KEY` yoksa yalnız bu uç 503
   döner. Sistem promptu `backend/src/main/resources/sistem-promptu.md`.
   Idempotency `mesaj.kaynak_id` (`db/450`) ile; köprü wamid göndermeli.
-  **Demo modeli: `gemma-4-26b-a4b-it`** (`GEMINI_MODEL` ile değişir). Gemini 3.5
-  Flash Lite yoğun saatlerde 503 veriyor; Gemma 4 26B function calling destekliyor.
-  İstemci 429/5xx'te iki kez yeniden dener. Gemma yalnız `user`/`model` rollerini
-  kabul eder (araç sonuçları `user` turunda) ve `thought` parçaları müşteriye
-  gönderilmez.
+  **LLM sağlayıcısı değiştirilebilir** (`LLM_SAGLAYICI=gemini|mistral`, `LlmIstemci`):
+  - **Demo: `mistral` + `deepseek-v4-1-flash-1017`** (Mistral platformu, OpenAI uyumlu).
+    Google ücretsiz katmanı 503 "high demand" ve 429 kota verdi; demo için güvenilir değil.
+  - Yedek: `gemini` + `gemma-4-26b-a4b-it`.
+  İki adaptör de 429/5xx'te iki kez yeniden dener. Gemini adaptörü Gemma'nın
+  `role:"function"` kısıtını (araç sonuçları `user` turunda) ve `thought`
+  parçalarını (müşteriye gitmez) özel olarak ele alır.
 - **`musteri.ad/soyad` artık NULL olabilir** (`db/440_musteri_bilgisi.sql`):
   kimlik telefondur, isim sonradan öğrenilir. Bu dosya ayrıca bot'a
   `UPDATE (ad, soyad)` yetkisi ve RLS UPDATE politikası ekler. `v_rapor_randevu`

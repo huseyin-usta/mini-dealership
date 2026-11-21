@@ -1280,10 +1280,19 @@ INSERT INTO mesaj (musteri_id, yon, icerik) VALUES ($1, 'GIDEN', $3);
 
 | Değişken | Varsayılan | Not |
 |---|---|---|
-| `GEMINI_API_KEY` | — | Yoksa `/bot/mesaj` 503 döner (diğer uçlar çalışır) |
+| `LLM_SAGLAYICI` | `gemini` | `gemini` \| `mistral` |
+| `MISTRAL_API_KEY` | — | `mistral` seçilirse gerekli |
+| `MISTRAL_MODEL` | `ministral-3b-latest` | Demo: `deepseek-v4-1-flash-1017` |
+| `MISTRAL_URL` | `https://api.mistral.ai/v1` | OpenAI uyumlu uç; testlerde stub'a çevrilir |
+| `MISTRAL_EFOR` | — | `reasoning_effort`; model desteklemiyorsa **boş** bırakılmalı (400 döner) |
+| `GEMINI_API_KEY` | — | Gemini/Gemma yedeği |
 | `GEMINI_MODEL` | `gemini-2.0-flash` | |
-| `GEMINI_URL` | `https://generativelanguage.googleapis.com/v1beta` | Testlerde stub'a çevrilir |
+| `GEMINI_URL` | `https://generativelanguage.googleapis.com/v1beta` | |
 | `KENDI_URL` | `http://127.0.0.1:HTTP_PORT` | Araçların çağrıldığı taban adres |
+
+Sağlayıcı katmanı (`LlmIstemci`) iki adaptör sunar; ikisi de aynı araç
+döngüsünü ve aynı hata modelini kullanır. Gemini adaptörü Gemma'da görülen
+`role:"function"` kısıtı ve `thought` parçaları için özel davranır.
 
 Sistem promptu: `backend/src/main/resources/sistem-promptu.md` (bugünün tarihi
 her istekte yerleştirilir).

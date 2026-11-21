@@ -8,6 +8,8 @@ import tr.edu.etu.dealership.db.Veritabani;
 import tr.edu.etu.dealership.web.AracHandler;
 import tr.edu.etu.dealership.bot.BotAraclari;
 import tr.edu.etu.dealership.bot.GeminiIstemci;
+import tr.edu.etu.dealership.bot.LlmIstemci;
+import tr.edu.etu.dealership.bot.MistralIstemci;
 import tr.edu.etu.dealership.web.BotTokeni;
 import tr.edu.etu.dealership.web.MusteriHandler;
 import tr.edu.etu.dealership.web.RandevuHandler;
@@ -62,12 +64,20 @@ public final class Main {
             }
         });
         // LLM: köprü mesajı buraya bırakır; backend kendi API'sini araç olarak çağırır.
-        GeminiIstemci gemini = new GeminiIstemci(ayarlar);
+        LlmIstemci llm = switch (ayarlar.llmSaglayici()) {
+            case "gemini" -> new GeminiIstemci(ayarlar);
+            case "mistral" -> new MistralIstemci(ayarlar);
+            default -> throw new IllegalStateException(
+                    "LLM_SAGLAYICI geçersiz: " + ayarlar.llmSaglayici()
+                            + " (gemini | mistral)");
+        };
         BotAraclari araclar = new BotAraclari(ayarlar.kendiUrl(), ayarlar.botToken());
-        if (!gemini.hazirMi()) {
-            LOG.warn("GEMINI_API_KEY tanımlı değil: /bot/mesaj 503 dönecek");
+        if (!llm.hazirMi()) {
+            LOG.warn("LLM anahtarı tanımlı değil ({}): /bot/mesaj 503 dönecek", llm.etiket());
+        } else {
+            LOG.info("LLM: {}", llm.etiket());
         }
-        sunucu.createContext("/bot/mesaj", new MesajHandler(db, token, gemini, araclar));
+        sunucu.createContext("/bot/mesaj", new MesajHandler(db, token, llm, araclar));
 
         sunucu.createContext("/saglik", HttpYardimci.saglik(db));
 

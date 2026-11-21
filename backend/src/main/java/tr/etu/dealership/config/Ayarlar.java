@@ -18,6 +18,12 @@ package tr.edu.etu.dealership.config;
  * GEMINI_URL      (varsayılan https://generativelanguage.googleapis.com/v1beta)
  * KENDI_URL       backend'in kendi adresi; LLM araçları buraya çağrılır
  *                 (varsayılan http://127.0.0.1:HTTP_PORT)
+ * LLM_SAGLAYICI   gemini | mistral (varsayılan gemini)
+ * MISTRAL_API_KEY Mistral platformu anahtarı (mistral seçilirse zorunlu)
+ * MISTRAL_MODEL   (varsayılan ministral-3b-latest)
+ * MISTRAL_URL     (varsayılan https://api.mistral.ai/v1)
+ * MISTRAL_EFOR    reasoning_effort: none|low|medium|high (boşsa gönderilmez;
+ *                 desteklemeyen modellerde 400 döner)
  * </pre>
  *
  * <p>Güvenli varsayılan: yalnızca yerel arayüz. Docker'da köprü ayrı bir
@@ -38,12 +44,19 @@ public final class Ayarlar {
     private final String geminiModel;
     private final String geminiUrl;
     private final String kendiUrl;
+    private final String llmSaglayici;
+    private final String mistralApiKey;
+    private final String mistralModel;
+    private final String mistralUrl;
+    private final String mistralEfor;
 
     private Ayarlar(String dbHost, int dbPort, String dbName,
                     String botDbUser, String botDbPass, String botToken,
                     String bindAdresi, int httpPort,
                     String geminiApiKey, String geminiModel,
-                    String geminiUrl, String kendiUrl) {
+                    String geminiUrl, String kendiUrl,
+                    String llmSaglayici, String mistralApiKey, String mistralModel,
+                    String mistralUrl, String mistralEfor) {
         this.dbHost = dbHost;
         this.dbPort = dbPort;
         this.dbName = dbName;
@@ -56,6 +69,11 @@ public final class Ayarlar {
         this.geminiModel = geminiModel;
         this.geminiUrl = geminiUrl;
         this.kendiUrl = kendiUrl;
+        this.llmSaglayici = llmSaglayici;
+        this.mistralApiKey = mistralApiKey;
+        this.mistralModel = mistralModel;
+        this.mistralUrl = mistralUrl;
+        this.mistralEfor = mistralEfor;
     }
 
     /** Ortam değişkenlerinden ayarları okur; zorunlu alanlar eksikse açık hata verir. */
@@ -73,7 +91,12 @@ public final class Ayarlar {
                 env("GEMINI_API_KEY", null),
                 env("GEMINI_MODEL", "gemini-2.0-flash"),
                 env("GEMINI_URL", "https://generativelanguage.googleapis.com/v1beta"),
-                env("KENDI_URL", "http://127.0.0.1:" + httpPort)
+                env("KENDI_URL", "http://127.0.0.1:" + httpPort),
+                env("LLM_SAGLAYICI", "gemini").toLowerCase(java.util.Locale.ROOT),
+                env("MISTRAL_API_KEY", null),
+                env("MISTRAL_MODEL", "ministral-3b-latest"),
+                env("MISTRAL_URL", "https://api.mistral.ai/v1"),
+                env("MISTRAL_EFOR", null)
         );
     }
 
@@ -128,4 +151,9 @@ public final class Ayarlar {
     public String geminiModel() { return geminiModel; }
     public String geminiUrl() { return geminiUrl; }
     public String kendiUrl() { return kendiUrl; }
+    public String llmSaglayici() { return llmSaglayici; }
+    public String mistralApiKey() { return mistralApiKey; }
+    public String mistralModel() { return mistralModel; }
+    public String mistralUrl() { return mistralUrl; }
+    public String mistralEfor() { return mistralEfor; }
 }
