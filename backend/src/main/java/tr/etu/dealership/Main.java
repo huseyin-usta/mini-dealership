@@ -9,6 +9,7 @@ import tr.edu.etu.dealership.web.AracHandler;
 import tr.edu.etu.dealership.web.BotTokeni;
 import tr.edu.etu.dealership.web.MusteriHandler;
 import tr.edu.etu.dealership.web.RandevuHandler;
+import tr.edu.etu.dealership.web.RandevuIptalHandler;
 import tr.edu.etu.dealership.web.HttpYardimci;
 import tr.edu.etu.dealership.web.SlotHandler;
 import tr.edu.etu.dealership.web.SubeHandler;
@@ -45,7 +46,18 @@ public final class Main {
         sunucu.createContext("/bot/slot", new SlotHandler(db, token));
         sunucu.createContext("/bot/arac", new AracHandler(db, token));
         sunucu.createContext("/bot/musteri", new MusteriHandler(db, token));
-        sunucu.createContext("/bot/randevu", new RandevuHandler(db, token));
+        RandevuHandler randevuHandler = new RandevuHandler(db, token);
+        RandevuIptalHandler randevuIptalHandler = new RandevuIptalHandler(db, token);
+        sunucu.createContext("/bot/randevu", randevuHandler);
+        // Daha uzun önek kazandığı için /bot/randevu/ ayrı context'tir. Tam bu yol
+        // (`/bot/randevu/`) liste/oluşturma ucudur; geri kalanı iptal ucudur.
+        sunucu.createContext("/bot/randevu/", ex -> {
+            if ("/bot/randevu/".equals(ex.getRequestURI().getPath())) {
+                randevuHandler.handle(ex);
+            } else {
+                randevuIptalHandler.handle(ex);
+            }
+        });
         sunucu.createContext("/saglik", HttpYardimci.saglik(db));
 
         sunucu.start();

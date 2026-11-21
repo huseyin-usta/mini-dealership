@@ -54,7 +54,7 @@ public abstract class BotHandler implements HttpHandler {
             // Sözleşmede tanımlı olmayan yol 404 döner.
             String istenenYol = ex.getRequestURI().getPath();
             String tanimliYol = ex.getHttpContext().getPath();
-            if (!tanimliYol.equals(istenenYol) && !(tanimliYol + "/").equals(istenenYol)) {
+            if (!yolGecerliMi(tanimliYol, istenenYol)) {
                 JsonYanit.yaz(ex, 404,
                         JsonYanit.hatali("YOL_YOK", "Böyle bir kaynak bulunmuyor.", true, null));
                 return;
@@ -151,6 +151,14 @@ public abstract class BotHandler implements HttpHandler {
     /** Bu endpoint'in kabul ettiği HTTP yöntemi. Sözleşmede GET/POST olarak sabittir. */
     protected String beklenenYontem() {
         return "GET";
+    }
+
+    /**
+     * İstenen yol bu context'e uyuyor mu? Varsayılan: tam yol veya sondaki eğik
+     * çizgi. Parça içeren yollar ({@code /bot/randevu/12/iptal}) bu kancayı ezer.
+     */
+    protected boolean yolGecerliMi(String tanimliYol, String istenenYol) {
+        return tanimliYol.equals(istenenYol) || (tanimliYol + "/").equals(istenenYol);
     }
 
     /** Bu endpoint'in kabul ettiği yöntemler. Aynı yolda GET ve POST varsa ikisi de. */
