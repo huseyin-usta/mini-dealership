@@ -158,6 +158,49 @@ public final class RandevuHandler extends BotHandler {
             """;
 
 
+    /** Liste projeksiyonu: yaklaşan, geçmiş ve son bakım aynı satır biçimini kullanır. */
+    private static final String LISTE_SELECT = """
+            SELECT r.randevu_id, r.tur_kodu, rt.ad AS tur_adi,
+                   r.baslangic, r.bitis, r.durum,
+                   s.sube_id, s.sehir, s.ad AS sube_ad,
+                   a.vin, md.ad AS model, v.paket_adi AS paket, a.renk
+              FROM randevu r
+              JOIN randevu_turu rt ON rt.tur_kodu = r.tur_kodu
+              JOIN sube s          ON s.sube_id   = r.sube_id
+              LEFT JOIN arac a     ON a.vin       = r.arac_vin
+              LEFT JOIN versiyon v ON v.versiyon_id = a.versiyon_id
+              LEFT JOIN model md   ON md.model_id = v.model_id
+             WHERE r.musteri_id = fn_aktif_musteri_id()
+            """;
+
+    private static final String YAKLASAN_SQL = LISTE_SELECT + """
+               AND r.durum = 'PLANLANDI'
+               AND r.bitis >= (now() AT TIME ZONE 'Europe/Istanbul')
+             ORDER BY r.baslangic
+            """;
+
+    private static final String GECMIS_SQL = LISTE_SELECT + """
+               AND (r.bitis < (now() AT TIME ZONE 'Europe/Istanbul')
+                    OR r.durum = 'IPTAL')
+             ORDER BY r.baslangic DESC
+             LIMIT ?
+            """;
+
+    /** Son bakım: son 10 randevu penceresinden bağımsız, en yeni tamamlanmış bakım. */
+    private static final String SON_BAKIM_SQL = LISTE_SELECT + """
+               AND r.tur_kodu = 'PERIYODIK_BAKIM'
+               AND r.durum = 'TAMAMLANDI'
+             ORDER BY r.baslangic DESC
+             LIMIT 1
+            """;
+
+    private static final String TOPLAM_SQL =
+            "SELECT count(*) AS toplam FROM randevu WHERE musteri_id = fn_aktif_musteri_id()";
+
+    /** Geçmiş listesi varsayılanı ve sınırları. */
+    private static final int VARSAYILAN_LIMIT = 10;
+    private static final int AZAMI_LIMIT = 50;
+
     private static final String EKLE_SQL = """
             INSERT INTO randevu
                 (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin,
@@ -179,17 +222,20 @@ public final class RandevuHandler extends BotHandler {
     }
 
     @Override
-    protected String beklenenYontem() {
-        return "POST";
+    protected List<String> izinliYontemler() {
+        return List.of("GET", "POST");
     }
 
     @Override
-    protected int basariliDurum() {
-        return 201;
+    protected int basariliDurum(HttpExchange ex) {
+        return "POST".equals(ex.getRequestMethod()) ? 201 : 200;
     }
 
     @Override
     protected Object isle(HttpExchange ex, Connection conn, byte[] hamGovde) throws Exception {
+        if ("GET".equals(ex.getRequestMethod())) {
+            return listele(conn, ex);
+        }
         Map<String, Object> b = govde(hamGovde);
 
         int subeId = zorunluSayi(b, "sube_id");
@@ -414,6 +460,127 @@ public final class RandevuHandler extends BotHandler {
         detay.put("mevcut_modeller", new ArrayList<>(modeller));
         throw ApiHatasi.goster("ARAC_YOK",
                 "İstediğiniz model bu saatte müsait değil.", 404, detay);
+    }
+
+    // --- listeleme ----------------------------------------------------------
+
+    /**
+     * Müşterinin randevuları. Üç ayrı liste döner:
+     * <ul>
+     *   <li>{@code yaklasan}: PLANLANDI ve başlangıcı geçmemiş</li>
+     *   <li>{@code gecmis}: başlangıcı geçmiş son N randevu (varsayılan 10)</li>
+     *   <li>{@code son_bakim}: en yeni tamamlanmış periyodik bakım — son N
+     *       penceresinden bağımsızdır, çünkü arada arıza/kaza randevuları
+     *       bakımı listeden düşürebilir</li>
+     * </ul>
+     */
+    private Object listele(Connection conn, HttpExchange ex) throws Exception {
+        Map<String, String> p = parametreler(ex);
+        for (String ad : p.keySet()) {
+            if (!ad.equals("limit")) {
+                throw ApiHatasi.goster("GECERSIZ_PARAMETRE",
+                        ad + " bu uçta tanımlı değil; yalnızca limit kullanılabilir.", 400, null);
+            }
+        }
+        int limit = limitOku(p);
+
+        long toplam;
+        try (PreparedStatement ps = conn.prepareStatement(TOPLAM_SQL);
+             ResultSet rs = ps.executeQuery()) {
+            rs.next();
+            toplam = rs.getLong("toplam");
+        }
+
+        List<Map<String, Object>> yaklasan = liste(conn, YAKLASAN_SQL, null);
+        List<Map<String, Object>> gecmis = liste(conn, GECMIS_SQL, limit);
+        List<Map<String, Object>> sonBakimListe = liste(conn, SON_BAKIM_SQL, null);
+
+        Map<String, Object> veri = new LinkedHashMap<>();
+        veri.put("toplam", toplam);
+        veri.put("yaklasan", yaklasan);
+        veri.put("gecmis", gecmis);
+        veri.put("son_bakim", sonBakimListe.isEmpty() ? null : sonBakimListe.get(0));
+        veri.put("bilgi", yaklasan.isEmpty()
+                ? "Yaklaşan randevunuz yok. Toplam " + toplam + " randevu."
+                : yaklasan.size() + " yaklaşan randevunuz var. Toplam " + toplam + " randevu.");
+        return veri;
+    }
+
+    private List<Map<String, Object>> liste(Connection conn, String sql, Integer limit)
+            throws Exception {
+        List<Map<String, Object>> sonuc = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            if (limit != null) {
+                ps.setInt(1, limit);
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    sonuc.add(satir(rs));
+                }
+            }
+        }
+        return sonuc;
+    }
+
+    private static Map<String, Object> satir(ResultSet rs) throws Exception {
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("randevu_id", rs.getLong("randevu_id"));
+        r.put("tur_kodu", rs.getString("tur_kodu"));
+        r.put("tur_adi", rs.getString("tur_adi"));
+        java.time.LocalDateTime bas = rs.getObject("baslangic", java.time.LocalDateTime.class);
+        java.time.LocalDateTime bit = rs.getObject("bitis", java.time.LocalDateTime.class);
+        r.put("tarih", bas.toLocalDate().toString());
+        r.put("baslangic", kisaSaat(bas.toLocalTime()));
+        r.put("bitis", kisaSaat(bit.toLocalTime()));
+        String durum = rs.getString("durum");
+        r.put("durum", durum);
+        r.put("durum_adi", randevuDurumAdi(durum));
+
+        Map<String, Object> sube = new LinkedHashMap<>();
+        sube.put("sube_id", rs.getInt("sube_id"));
+        sube.put("sehir", rs.getString("sehir"));
+        sube.put("ad", rs.getString("sube_ad"));
+        r.put("sube", sube);
+
+        String vin = rs.getString("vin");
+        if (vin == null) {
+            r.put("arac", null);
+        } else {
+            Map<String, Object> arac = new LinkedHashMap<>();
+            arac.put("vin", vin);
+            arac.put("model", rs.getString("model"));
+            arac.put("paket", rs.getString("paket"));
+            arac.put("renk", rs.getString("renk"));
+            r.put("arac", arac);
+        }
+        return r;
+    }
+
+    private static String randevuDurumAdi(String kod) {
+        if (kod == null) return "Bilinmiyor";
+        return switch (kod) {
+            case "PLANLANDI"  -> "Planlandı";
+            case "TAMAMLANDI" -> "Tamamlandı";
+            case "IPTAL"      -> "İptal edildi";
+            case "GELMEDI"    -> "Gelmedi";
+            default           -> kod;
+        };
+    }
+
+    private static int limitOku(Map<String, String> p) {
+        String v = p.get("limit");
+        if (v == null) return VARSAYILAN_LIMIT;
+        int limit;
+        try {
+            limit = Integer.parseInt(v.trim());
+        } catch (NumberFormatException e) {
+            throw ApiHatasi.goster("GECERSIZ_PARAMETRE", "limit sayısal olmalı.", 400, null);
+        }
+        if (limit < 1 || limit > AZAMI_LIMIT) {
+            throw ApiHatasi.goster("GECERSIZ_PARAMETRE",
+                    "limit 1 ile " + AZAMI_LIMIT + " arasında olmalı.", 400, null);
+        }
+        return limit;
     }
 
     // --- alan okuma ---------------------------------------------------------

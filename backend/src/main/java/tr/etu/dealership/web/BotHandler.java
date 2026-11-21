@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -59,8 +60,8 @@ public abstract class BotHandler implements HttpHandler {
                 return;
             }
 
-            if (!beklenenYontem().equals(ex.getRequestMethod())) {
-                ex.getResponseHeaders().set("Allow", beklenenYontem());
+            if (!izinliYontemler().contains(ex.getRequestMethod())) {
+                ex.getResponseHeaders().set("Allow", String.join(", ", izinliYontemler()));
                 JsonYanit.yaz(ex, 405,
                         JsonYanit.hatali("YONTEM_DESTEKLENMIYOR", "Bu yöntem desteklenmiyor.",
                                 true, null));
@@ -103,7 +104,7 @@ public abstract class BotHandler implements HttpHandler {
                                 + ex.getRequestURI().getPath());
                     }
                     conn.commit();
-                    JsonYanit.yaz(ex, basariliDurum(), JsonYanit.basarili(veri));
+                    JsonYanit.yaz(ex, basariliDurum(ex), JsonYanit.basarili(veri));
                 } catch (ApiHatasi e) {
                     conn.rollback();
                     JsonYanit.yaz(ex, e.httpDurum(),
@@ -152,8 +153,13 @@ public abstract class BotHandler implements HttpHandler {
         return "GET";
     }
 
-    /** Başarılı yanıtın HTTP durumu. Kaynak oluşturan uçlar 201 döner. */
-    protected int basariliDurum() {
+    /** Bu endpoint'in kabul ettiği yöntemler. Aynı yolda GET ve POST varsa ikisi de. */
+    protected List<String> izinliYontemler() {
+        return List.of(beklenenYontem());
+    }
+
+    /** Başarılı yanıtın HTTP durumu. Kaynak oluşturan istekler 201 döner. */
+    protected int basariliDurum(HttpExchange ex) {
         return 200;
     }
 
@@ -239,7 +245,19 @@ public abstract class BotHandler implements HttpHandler {
         if (q == null || q.isEmpty()) return sonuc;
         for (String parca : q.split("&")) {
             int i = parca.indexOf('=');
-            if (i <= 0) continue;
+            if (i == 0) continue;                    // "=x" geçersiz, yok sayılır
+            if (i < 0) {
+                // "?limit" gibi değersiz parametre: boş değerle kaydedilir ki
+                // doğrulama katmanı yakalayabilsin (sessizce yok sayılmasın).
+                String ad = decode(parca);
+                if (ad.isBlank()) continue;
+                if (sonuc.containsKey(ad)) {
+                    throw ApiHatasi.goster("GECERSIZ_PARAMETRE",
+                            ad + " parametresi birden çok kez gönderilmiş.", 400, null);
+                }
+                sonuc.put(ad, "");
+                continue;
+            }
             String ad = decode(parca.substring(0, i));
             if (sonuc.containsKey(ad)) {
                 throw ApiHatasi.goster("GECERSIZ_PARAMETRE",
