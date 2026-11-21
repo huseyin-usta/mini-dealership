@@ -112,6 +112,160 @@ Açılır listeler için tek seferde: şubeler, randevu türleri (süre, departm
 aktif çalışanlar (şube, departman, yetkinlikler), modeller. Panel girişte bir kez
 çeker.
 
+## 3. `GET /panel/randevu` — Bugünkü randevular
+
+| Parametre | Zorunlu | Açıklama |
+|---|---|---|
+| `tarih` | ❌ | Varsayılan bugün |
+| `sube_id` | ❌ | Varsayılan oturumdaki çalışanın şubesi |
+| `tur_kodu`, `durum`, `calisan_id` | ❌ | Filtre |
+
+Satır: `randevu_id, baslangic, bitis, durum, kaynak, tur_kodu, tur_adi,
+calisan (ad soyad), musteri_id, musteri (ad soyad), telefon, arac_vin, plaka,
+model_adi, notlar`. Sıralama: `baslangic`.
+
+İndeks: `idx_randevu_sube_baslangic`.
+
+## 4. `POST /panel/randevu` — Randevu ekle
+
+Şubeye gelen veya telefonla arayan müşteri için. `kaynak = 'PANEL'`.
+
+| Alan | Zorunlu | Açıklama |
+|---|---|---|
+| `telefon` | ✅ | E.164. Müşteri yoksa oluşturulur (`ad`, `soyad` o zaman zorunlu) |
+| `ad`, `soyad` | ❌/✅ | Yeni müşteri için zorunlu |
+| `sube_id`, `tur_kodu`, `baslangic` | ✅ | `baslangic`: `YYYY-MM-DDTHH:MM` |
+| `calisan_id` | ❌ | Verilmezse backend uygun çalışanı atar (bot ile aynı kural) |
+| `arac_vin` | ❌ | Araç gerektiren türde verilmezse bot ile aynı atama kuralı |
+| `notlar` | ❌ | |
+
+Botla fark: 21 günlük üst sınır yok, çalışan elle seçilebilir. Kontroller
+(mesai, tür saat penceresi, yetkinlik, çakışma) DB trigger'ları ve EXCLUDE
+kısıtlarında olduğu için **aynen geçerlidir**.
+
+`201 Created` → oluşan randevu satırı (3'teki biçim).
+
+Hatalar: `GECMIS_TARIH 400`, `GECERSIZ_SAAT 400` (mesai/tür penceresi dışı),
+`SLOT_DOLU 409` (`detay.sebep`: `CALISAN_DOLU` | `ARAC_DOLU` | `MUSTERI_DOLU` —
+hangi EXCLUDE kısıtına takıldığı), `CALISAN_UYGUN_DEGIL 409` (elle seçilen
+çalışan; `220_trg_randevu_dogrula`'dan, `detay.sebep`: `PASIF` | `BASKA_SUBE` |
+`DEPARTMAN` | `YETKINLIK_YOK`), `ARAC_UYGUN_DEGIL 409` (test sürüşü aracı
+şubede `STOKTA` değil, yoldaki aracın teslimi varıştan önce),
+`BULUNAMADI 404` (şube/tür/çalışan/araç).
+
+## 5. `POST /panel/randevu/{id}/durum`
+
+```json
+{ "durum": "TAMAMLANDI" }
+```
+
+İzinli geçişler: `PLANLANDI → TAMAMLANDI | GELMEDI | IPTAL`. Diğerleri
+`409 GECERSIZ_GECIS` (ör. iptal edilmiş randevuyu yeniden açmak — trigger zaten
+engelliyor).
+
+> **Satış akışı** (araç `SATILDI` + stok hareketi + randevu `TAMAMLANDI`, tek
+> transaction) ayrı bir uçtur ve transaction sahibi Hüseyin'dir; burada
+> yalnızca durum değişikliği var. Bkz. açık kararlar.
+
+## 6. Araçlar
+
+`GET /panel/arac`
+
+| Parametre | Açıklama |
+|---|---|
+| `sube_id` | Varsayılan oturumdaki şube |
+| `durum` | `STOKTA`, `YOLDA`, `SATILDI` |
+| `ara` | VIN veya plaka (tam ya da önek eşleşme) |
+| `model_id` | Filtre |
+
+Satır: `vin, plaka, model_adi, paket_adi, renk, durum, tahmini_varis_tarihi, sube_id`.
+
+`GET /panel/arac/{vin}` — detay:
+
+- araç + versiyon özellikleri (`versiyon_ozellik`)
+- garanti: `v_arac_garanti_durumu` satırı (`garanti_durumu`, `garanti_bitis`,
+  `sonraki_bakim_son_tarih`, `sonraki_bakim_son_km`, …) — yalnızca satılmış araçta
+- stok hareketleri (zaman sırasıyla)
+- servis kayıtları özeti (`v_servis_durumu`)
+
+> Not: `v_arac_garanti_durumu` tek araç için ~135 ms sürüyor
+> (`docs/analiz/indeks-analizi.md` §7). Panel için kabul edilebilir; view
+> düzeltilirse bu uç kendiliğinden hızlanır.
+
+## 7. Servis kayıtları
+
+`GET /panel/servis` — `v_servis_durumu` üzerinden.
+
+| Parametre | Açıklama |
+|---|---|
+| `sube_id` | Varsayılan oturumdaki şube |
+| `acik` | `true`: `kapandi_mi = false` |
+| `gecikti` | `true`: `gecikti_mi = true` |
+| `ara` | VIN veya plaka |
+
+Satır: `servis_kaydi_id, arac_vin, plaka, model_adi, musteri, sebep, son_durum,
+son_durum_zamani, tahmini_teslim_tarihi, kalan_gun, gecikti_mi, toplam_masraf`.
+
+`GET /panel/servis/{id}` — detay: kayıt + `servis_durum_gecmisi` (zaman
+sırasıyla) + `servis_islem` satırları + masraf kırılımı (`musteri_payi`,
+`garanti_payi`, `sigorta_payi`) + sigorta bilgisi.
+
+## 8. Servis güncelleme
+
+`POST /panel/servis/{id}/durum` — durum geçmişine **yeni satır ekler**
+(geçmiş değiştirilmez; `personel` rolünde bu tabloda yalnızca INSERT var).
+
+```json
+{ "durum": "PARCA_BEKLENIYOR", "aciklama": "Fren diski sipariş edildi",
+  "tahmini_teslim_tarihi": "2026-11-28" }
+```
+
+`tahmini_teslim_tarihi` verilirse servis kaydında güncellenir (aynı transaction).
+
+`POST /panel/servis/{id}/islem`
+
+```json
+{ "islem_adi": "Fren diski değişimi", "ucret": 4500,
+  "odeme_kaynagi": "GARANTI", "aciklama": null }
+```
+
+Hatalar (`210_trg_servis_garanti` trigger'ından çevrilir):
+
+- `ODEME_KAYNAGI_GECERSIZ 409` — servis sebebine uymayan ödeme kaynağı
+  (bakım yalnızca müşteri; kaza müşteri/sigorta; arıza müşteri/garanti).
+- `GARANTI_GECERSIZ 409` — garanti uygulanamaz; `detay.sebep`: `SATIS_YOK` |
+  `KM_ASILDI` | `SURE_DOLDU` | `BAKIM_AKSATILDI`. Panel bu durumda formu
+  "müşteri öder" seçeneğine çevirmeyi önerir.
+- `KAPALI_KAYIT 409` — kapanmış servis kaydına işlem/durum eklenemez
+  (backend kuralı; DB'de kısıt yok).
+
+> Servis kaydı **açma** (`SERVIS_GIRIS` randevusundan) ve **teslim**
+> (`SERVIS_TESLIM`) de panelden yapılacak; kuralları bot tarafındaki
+> SERVIS_TESLIM akışıyla ortak olduğu için Hüseyin'le birlikte eklenecek.
+
+## 9. Müşteriler
+
+`GET /panel/musteri?ara=` — telefon (önek) veya ad/soyad (içerir) ile arama.
+Satır: `musteri_id, ad, soyad, telefon, kayit_zamani, son_randevu`
+(`v_musteri_son_randevu`).
+
+`GET /panel/musteri/{id}` — iletişim bilgileri + randevu geçmişi (yeniden
+eskiye, iptaller dahil, durumuyla) + sahip olduğu araçlar.
+
+## 10. `GET /panel/musteri/{id}/mesaj` — Bot konuşmaları
+
+| Parametre | Açıklama |
+|---|---|
+| `once` | Bu `mesaj_id`'den eski mesajlar (imleç); yoksa en yeniler |
+| `limit` | Varsayılan 50, en fazla 200 |
+
+Satır: `mesaj_id, yon (GELEN/GIDEN), zaman, icerik`. Yeniden eskiye.
+Yanıtta `sonraki_once` (daha eski mesaj yoksa `null`).
+
+İndeks: `idx_mesaj_musteri_zaman` (`musteri_id, zaman DESC`).
+
+Salt-okunur: `personel` rolünün `mesaj` tablosunda yazma yetkisi yok.
+
 ---
 
 ## Açık kararlar (backend sahibiyle konuşulacak)
