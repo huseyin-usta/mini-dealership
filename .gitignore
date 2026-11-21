@@ -5,6 +5,8 @@ dokumanlar/
 # Ortam ve gizli bilgiler
 .env
 .env.*
+# Örnek dosyalar sır içermez; ekip kurulum için gerekli
+!**/.env.example
 
 # Derleme çıktıları
 target/
