@@ -253,6 +253,59 @@ VALUES ((SELECT musteri_id FROM musteri WHERE telefon = '+905550001188'), 1, 'TE
         'VIN00000000000041', :'g2'::date + time '14:00', :'g2'::date + time '15:00',
         'PLANLANDI', 'PANEL');
 
+-- Gecmis randevu testi: bakimi eski, arada ariza kayitlari olan musteri.
+INSERT INTO musteri (ad, soyad, telefon) VALUES ('Gecmis', 'Musteri', '+905550001199');
+INSERT INTO arac (vin, versiyon_id, sube_id, renk, plaka, durum, musteri_id) VALUES
+  ('VIN00000000000042', 1, 1, 'Gri', '06GG01', 'SATILDI',
+   (SELECT musteri_id FROM musteri WHERE telefon = '+905550001199'));
+INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak)
+SELECT m.musteri_id, 1, 'PERIYODIK_BAKIM', 4, 'VIN00000000000042',
+       :'g'::date - interval '28 day' + time '09:00',
+       :'g'::date - interval '28 day' + time '10:00', 'TAMAMLANDI', 'PANEL'
+  FROM musteri m WHERE m.telefon = '+905550001199';
+INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak)
+SELECT m.musteri_id, 1, 'SERVIS_GIRIS', 4, 'VIN00000000000042',
+       :'g'::date - interval '14 day' + time '10:00',
+       :'g'::date - interval '14 day' + time '10:30', 'TAMAMLANDI', 'PANEL'
+  FROM musteri m WHERE m.telefon = '+905550001199';
+INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak)
+SELECT m.musteri_id, 1, 'SERVIS_GIRIS', 4, 'VIN00000000000042',
+       :'g'::date - interval '7 day' + time '11:00',
+       :'g'::date - interval '7 day' + time '11:30', 'TAMAMLANDI', 'PANEL'
+  FROM musteri m WHERE m.telefon = '+905550001199';
+-- Gizli arac testi: bu test surusu yapildiginda arac stoktaydi, sonra baska
+-- musteriye satildi -> musteri 8 listesinde arac alani null gelmeli.
+INSERT INTO musteri (ad, soyad, telefon) VALUES ('Baskasi', 'Sahip', '+905550001210');
+INSERT INTO arac (vin, versiyon_id, sube_id, renk, durum) VALUES
+  ('VIN00000000000043', 1, 1, 'Kirmizi', 'STOKTA');
+INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak)
+SELECT m.musteri_id, 1, 'TEST_SURUSU', 1, 'VIN00000000000043',
+       :'g'::date - interval '21 day' + time '10:00',
+       :'g'::date - interval '21 day' + time '11:00', 'TAMAMLANDI', 'PANEL'
+  FROM musteri m WHERE m.telefon = '+905550001199';
+UPDATE arac SET durum = 'SATILDI', plaka = '06BB99',
+       musteri_id = (SELECT musteri_id FROM musteri WHERE telefon = '+905550001210')
+ WHERE vin = 'VIN00000000000043';
+-- Bu musterinin yalniz servis gecmisi var: son_bakim null olmali
+INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak)
+SELECT m.musteri_id, 1, 'SERVIS_GIRIS', 4, 'VIN00000000000043',
+       :'g'::date - interval '10 day' + time '09:00',
+       :'g'::date - interval '10 day' + time '09:30', 'TAMAMLANDI', 'PANEL'
+  FROM musteri m WHERE m.telefon = '+905550001210';
+-- Gelecek ama iptal edilmis randevu: iki listede de degil, gecmis'te gorunmeli
+INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak)
+SELECT m.musteri_id, 1, 'SERVIS_GIRIS', 4, 'VIN00000000000042',
+       :'g'::date + interval '7 day' + time '14:00',
+       :'g'::date + interval '7 day' + time '14:30', 'IPTAL', 'PANEL'
+  FROM musteri m WHERE m.telefon = '+905550001199';
+
+-- Yaklasan (PLANLANDI) bakim: g+7 (testlerin kullanmadigi gun)
+INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak)
+SELECT m.musteri_id, 1, 'PERIYODIK_BAKIM', 4, 'VIN00000000000042',
+       :'g'::date + interval '7 day' + time '10:00',
+       :'g'::date + interval '7 day' + time '11:00', 'PLANLANDI', 'PANEL'
+  FROM musteri m WHERE m.telefon = '+905550001199';
+
 -- Yetkinligi suresi dolmus ve henuz baslamamis saticilar: slot sayimina girmemeli
 INSERT INTO calisan (sube_id, ad, soyad, departman, eposta, kullanici_adi, sifre_hash, ise_giris_tarihi) VALUES
   (1, 'Eski',  'Satici', 'SATIS', 'e@x', 'e.s', 'h', '2019-01-01'),
@@ -869,8 +922,93 @@ if [ -n "$MID_R" ] && [ "$MID_R" = "$MID2" ]; then
 else
   echo "[FAIL] Randevu: musteri id tutarsiz (randevu=$MID_R, musteri=$MID2)"; KALAN=$((KALAN + 1))
 fi
-bekle "Randevu: GET -> 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' \
-  -H "$TOK" -H "$TEL" "$TABAN/bot/randevu"
+bekle "Randevu: PUT -> 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' \
+  -X PUT -H "$TOK" -H "$TEL" "$TABAN/bot/randevu"
+
+echo "--- GET /bot/randevu ---"
+TEL_G='X-Musteri-Telefon: +905550001199'
+G28=$(date -j -v-28d -f "%Y-%m-%d" "$GUN" +%Y-%m-%d)
+G14=$(date -j -v-14d -f "%Y-%m-%d" "$GUN" +%Y-%m-%d)
+G7=$(date -j -v-7d -f "%Y-%m-%d" "$GUN" +%Y-%m-%d)
+
+RANDEVU=$(curl -s -w '\n%{http_code}' -H "$TOK" -H "$TEL_G" "$TABAN/bot/randevu")
+KOD_RD=$(printf '%s' "$RANDEVU" | tail -n1)
+GOV_RD=$(printf '%s' "$RANDEVU" | sed '$d')
+if [ "$KOD_RD" = "200" ] \
+   && printf '%s' "$GOV_RD" | grep -qF '"toplam":6' \
+   && printf '%s' "$GOV_RD" | grep -qF '"yaklasan":[{"randevu_id"' \
+   && printf '%s' "$GOV_RD" | grep -qF '"gecmis":[{"randevu_id"'; then
+  echo "[PASS] Randevular: toplam, yaklasan ve gecmis listeleri dolu"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Randevular: liste yaniti yanlis"; echo "       HTTP $KOD_RD $GOV_RD"; KALAN=$((KALAN + 1))
+fi
+# Gecmis azalan sirali: en yeni once (g-7), sonra g-14
+if printf '%s' "$GOV_RD" | grep -qF "\"tarih\":\"$G7\"" \
+   && printf '%s' "$GOV_RD" | grep -qF "\"tarih\":\"$G14\"" \
+   && printf '%s' "$GOV_RD" | grep -qF '"durum_adi":"Tamamlandı"'; then
+  echo "[PASS] Randevular: gecmis tarihleri ve durum adi dogru"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Randevular: tarih/durum eksik"; echo "       $GOV_RD"; KALAN=$((KALAN + 1))
+fi
+# Son bakim: son N penceresinden bagimsiz (limit=1 iken bile eski bakim doner)
+LIM1=$(curl -s -H "$TOK" -H "$TEL_G" "$TABAN/bot/randevu?limit=1")
+if printf '%s' "$LIM1" | grep -qF "\"tarih\":\"$G28\"" \
+   && ! printf '%s' "$LIM1" | grep -qF "\"tarih\":\"$G14\"" \
+   && printf '%s' "$LIM1" | grep -qF '"son_bakim":{"randevu_id"'; then
+  echo "[PASS] Randevular: son_bakim son-N penceresinden bagimsiz (limit=1)"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Randevular: son_bakim/limit ayrimi yanlis"; echo "       $LIM1"; KALAN=$((KALAN + 1))
+fi
+# RLS gizlenen arac: satilmis aracin gecmis randevusunda arac null gelir
+if printf '%s' "$GOV_RD" | grep -qF '"arac":null'; then
+  echo "[PASS] Randevular: baskasina satilmis aracin gecmis kaydinda arac null"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Randevular: gizli arac sizdi"; echo "       $GOV_RD"; KALAN=$((KALAN + 1))
+fi
+# Gelecek iptal: yaklasan'da degil, gecmis'te
+G7I=$(date -j -v+7d -f "%Y-%m-%d" "$GUN" +%Y-%m-%d)
+if printf '%s' "$GOV_RD" | grep -qF '"durum_adi":"İptal edildi"'; then
+  echo "[PASS] Randevular: gelecek iptal gecmis listesinde gorunuyor"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Randevular: gelecek iptal kaydi listede yok"; KALAN=$((KALAN + 1))
+fi
+# son_bakim null: yalniz servis gecmisi olan musteri
+YANIT_SB=$(curl -s -H "$TOK" -H 'X-Musteri-Telefon: +905550001210' "$TABAN/bot/randevu")
+if printf '%s' "$YANIT_SB" | grep -qF '"son_bakim":null'; then
+  echo "[PASS] Randevular: periyodik bakimi olmayanda son_bakim null"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Randevular: son_bakim null olmaliydi"; echo "       $YANIT_SB"; KALAN=$((KALAN + 1))
+fi
+# Izolasyon: baska musterinin araci/randevusu gorunmemeli
+YANIT_SL=$(curl -s -H "$TOK" -H "$TEL_S" "$TABAN/bot/randevu")
+if printf '%s' "$YANIT_SL" | grep -qF 'VIN00000000000042'; then
+  echo "[FAIL] Randevular: baska musterinin araci listede"; KALAN=$((KALAN + 1))
+else
+  echo "[PASS] Randevular: baska musterinin kaydi gorunmuyor"; GECEN=$((GECEN + 1))
+fi
+# Bos gecmis: hic randevusu olmayan musteri
+bekle "Randevular: randevusuz musteri -> bos listeler" 200 '"toplam":0' \
+  -H "$TOK" -H 'X-Musteri-Telefon: +905550007702' "$TABAN/bot/randevu"
+# limit sinirlari
+bekle "Randevular: limit=0 -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -H "$TOK" -H "$TEL_G" "$TABAN/bot/randevu?limit=0"
+bekle "Randevular: limit=51 -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -H "$TOK" -H "$TEL_G" "$TABAN/bot/randevu?limit=51"
+bekle "Randevular: limit=abc -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -H "$TOK" -H "$TEL_G" "$TABAN/bot/randevu?limit=abc"
+bekle "Randevular: limit=50 kabul" 200 '"ok":true' \
+  -H "$TOK" -H "$TEL_G" "$TABAN/bot/randevu?limit=50"
+bekle "Randevular: bilinmeyen parametre -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -H "$TOK" -H "$TEL_G" "$TABAN/bot/randevu?limt=5"
+# 405 yanitinda Allow basligi
+ALLOW=$(curl -s -i -X PUT -H "$TOK" -H "$TEL" "$TABAN/bot/randevu" | grep -i '^allow:' | tr -d '\r')
+if printf '%s' "$ALLOW" | grep -qF 'GET' && printf '%s' "$ALLOW" | grep -qF 'POST'; then
+  echo "[PASS] Randevular: 405 yanitinda Allow: GET, POST"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Randevular: Allow basligi eksik ($ALLOW)"; KALAN=$((KALAN + 1))
+fi
+bekle "Randevular: kimlik yok -> 401" 401 '"kod":"KIMLIK_YOK"' \
+  -H "$TOK" "$TABAN/bot/randevu"
 
 echo "--- POST /bot/randevu (yeni musteri, rollback, eszamanlilik) ---"
 # Yeni telefonla basarili kayit: musteri satiri + randevu ayni transaction'da

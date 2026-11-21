@@ -30,14 +30,14 @@ session'lara ve ekip arkadaşına bağlam aktarımı içindir.
     `docs/analiz/sorgular.sql`, `docs/analiz/indeks-analizi.md`): 7 sorgu ve 13 indeks
     `EXPLAIN (ANALYZE, BUFFERS)` ile ölçüldü.
 - **Bot API (backend)**: `docs/api/bot-sozlesmesi.md` sözleşmesi; `GET /bot/sube`,
-  `GET /bot/slot`, `GET /bot/arac`, `POST /bot/randevu` ve `POST /bot/musteri`
-  uçtan uca tamam (sözleşme + Java + test). Köprü↔backend arasında `X-Bot-Token`
-  (BOT_TOKEN, ≥32 karakter) zorunlu; varsayılan bind `127.0.0.1` (`BIND_ADRESI`).
-  Kalan bot uçları: `GET /bot/randevu` (geçmiş), `POST /bot/randevu/{id}/iptal`,
+  `GET /bot/slot`, `GET /bot/arac`, `POST /bot/randevu`, `GET /bot/randevu` ve
+  `POST /bot/musteri` uçtan uca tamam (sözleşme + Java + test). Köprü↔backend
+  arasında `X-Bot-Token` (BOT_TOKEN, ≥32 karakter) zorunlu; varsayılan bind
+  `127.0.0.1` (`BIND_ADRESI`). Kalan bot uçları: `POST /bot/randevu/{id}/iptal`,
   `POST /bot/mesaj` (giriş noktası).
 - Test: `scripts/test-db.sh` 23 senaryo (trigger, view, rol/RLS, müşteri izolasyonu);
-  `scripts/test-bot-http.sh` 146 HTTP senaryosu (gerçek Postgres + gerçek JAR; token/kimlik/
-  müsaitlik/stok/randevu/hatalar, eşzamanlılık dahil). Hepsi geçiyor.
+  `scripts/test-bot-http.sh` 161 HTTP senaryosu (gerçek Postgres + gerçek JAR; token/kimlik/
+  müsaitlik/stok/randevu listeleme/hatalar, eşzamanlılık dahil). Hepsi geçiyor.
 - Şema görselleştirme: `scripts/sema-diyagram.sh` (tbls + geçici Docker Postgres)
   → `docs/sema/` çıktısı güncel şemayla (tablolar, view'lar, trigger'lar, indeksler) yenilendi.
 - Kalan işler: bot API'nin kalan uçları, WhatsApp köprüsü, panel API'leri, panel (HTML/JS, Şevda), Docker Compose.

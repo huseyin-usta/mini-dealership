@@ -103,7 +103,7 @@ kontrolü içindir) ve yalnızca `ok` / `db erişilemiyor` döndürür. Diğer y
 | 2 | `GET /bot/slot` | `musait_slotlar` | Müsait randevu saatleri ve o saatteki imkanlar |
 | 3 | `GET /bot/arac` | `arac_listele` | Stoktaki/yoldaki araçlar veya müşterinin araçları |
 | 4 | `POST /bot/randevu` | `randevu_olustur` | Randevu oluşturma |
-| 5 | `GET /bot/randevu` | `randevularim` | Müşterinin randevu geçmişi |
+| 5 | `GET /bot/randevu` | `randevularim` | Müşterinin randevuları: yaklaşan + geçmiş + son bakım |
 | 6 | `POST /bot/randevu/{id}/iptal` | `randevu_iptal` | Randevu iptali |
 | 7 | `POST /bot/mesaj` | — | Köprünün giriş noktası (LLM tool'u değil) |
 | 8 | `POST /bot/musteri` | `musteri_bilgisi` | Müşterinin ad/soyadını yazar (öğrendikçe) |
@@ -850,6 +850,146 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, 'PLANLANDI', 'WHATSAPP');
 
 ---
 
+## 5. `GET /bot/randevu`
+
+Müşterinin **kendi** randevularını üç ayrı listede döner. RLS gereği başka
+müşterilerin satırları görünmez; ayrıca açık `musteri_id = fn_aktif_musteri_id()`
+koşulu vardır (iki katman).
+
+### İstek
+
+```
+GET /bot/randevu
+GET /bot/randevu?limit=5
+```
+
+| Query | Tip | Zorunlu | Açıklama |
+|---|---|---|---|
+| `limit` | integer | ❌ | Geçmiş listesinin uzunluğu, 1–50 (varsayılan 10) |
+
+### Başarılı yanıt — `200 OK`
+
+```json
+{
+  "ok": true,
+  "veri": {
+    "toplam": 4,
+    "yaklasan": [
+      {
+        "randevu_id": 88,
+        "tur_kodu": "PERIYODIK_BAKIM",
+        "tur_adi": "Periyodik Bakım",
+        "tarih": "2026-12-05",
+        "baslangic": "10:00",
+        "bitis": "11:00",
+        "durum": "PLANLANDI",
+        "durum_adi": "Planlandı",
+        "sube": { "sube_id": 1, "sehir": "Ankara", "ad": "Çankaya" },
+        "arac": { "vin": "VIN00000000000042", "model": "Ioniq 5",
+                  "paket": "Advance", "renk": "Gri" }
+      }
+    ],
+    "gecmis": [
+      {
+        "randevu_id": 77,
+        "tur_kodu": "SERVIS_GIRIS",
+        "tur_adi": "Servise Giriş",
+        "tarih": "2026-11-21",
+        "baslangic": "11:00",
+        "bitis": "11:30",
+        "durum": "TAMAMLANDI",
+        "durum_adi": "Tamamlandı",
+        "sube": { "sube_id": 1, "sehir": "Ankara", "ad": "Çankaya" },
+        "arac": { "vin": "VIN00000000000042", "model": "Ioniq 5",
+                  "paket": "Advance", "renk": "Gri" }
+      }
+    ],
+    "son_bakim": {
+      "randevu_id": 55,
+      "tur_kodu": "PERIYODIK_BAKIM",
+      "tur_adi": "Periyodik Bakım",
+      "tarih": "2026-10-31",
+      "baslangic": "09:00",
+      "bitis": "10:00",
+      "durum": "TAMAMLANDI",
+      "durum_adi": "Tamamlandı",
+      "sube": { "sube_id": 1, "sehir": "Ankara", "ad": "Çankaya" },
+      "arac": { "vin": "VIN00000000000042", "model": "Ioniq 5",
+                "paket": "Advance", "renk": "Gri" }
+    },
+    "bilgi": "1 yaklaşan randevunuz var. Toplam 4 randevu."
+  }
+}
+```
+
+### Üç listenin anlamı
+
+| Alan | İçerik | Sıralama |
+|---|---|---|
+| `yaklasan` | `durum = PLANLANDI` ve **bitişi geçmemiş** randevular (devam eden dahil) | Yakından uzağa |
+| `gecmis` | **Bitmiş veya iptal edilmiş** son `limit` randevu | Yeniden eskiye |
+| `son_bakim` | En yeni **tamamlanmış periyodik bakım**; yoksa `null` | — |
+
+`gecmis` iki durumu kapsar: süresi geçmiş randevular ve **tarihi gelecekte olsa
+bile iptal edilmiş** randevular. Böylece her randevu tam olarak bir kovada
+görünür; `toplam` ile listeler çelişmez (liste `limit` ile sınırlı olabilir).
+
+`son_bakim` neden ayrı: son 10 randevu arasında arıza/kaza kayıtları bakımı
+listeden düşürebilir. Bot "son bakımınız neredeydi?" sorusunu bu alandan
+cevaplar; `limit` bu alanı etkilemez.
+
+`arac` alanı, o randevuya bağlı araç varsa dolar. Araç sonradan başka bir
+müşteriye satıldıysa RLS görünürlüğü kaldırır ve `arac` `null` gelir.
+
+### Hata yanıtları
+
+| Kod | HTTP | Koşul |
+|---|---|---|
+| `GECERSIZ_PARAMETRE` | 400 | `limit` sayısal değil / 1–50 dışında; tanımsız parametre (ör. `limt`) |
+| `KIMLIK_YOK` | 401 | `X-Musteri-Telefon` yok/geçersiz |
+| `YONTEM_DESTEKLENMIYOR` | 405 | GET/POST dışı yöntem (`Allow: GET, POST`) |
+
+### Veritabanı
+
+```sql
+SELECT r.randevu_id, r.tur_kodu, rt.ad, r.baslangic, r.bitis, r.durum,
+       s.sube_id, s.sehir, s.ad AS sube_ad,
+       a.vin, md.ad AS model, v.paket_adi, a.renk
+  FROM randevu r
+  JOIN randevu_turu rt ON rt.tur_kodu  = r.tur_kodu
+  JOIN sube s          ON s.sube_id    = r.sube_id
+  LEFT JOIN arac a     ON a.vin        = r.arac_vin
+  LEFT JOIN versiyon v ON v.versiyon_id = a.versiyon_id
+  LEFT JOIN model md   ON md.model_id  = v.model_id
+ WHERE r.musteri_id = fn_aktif_musteri_id()
+   AND (r.bitis < (now() AT TIME ZONE 'Europe/Istanbul')  -- süresi geçmiş
+        OR r.durum = 'IPTAL')                            -- veya iptal edilmiş
+ ORDER BY r.baslangic DESC
+ LIMIT $1;
+```
+
+- `now() AT TIME ZONE 'Europe/Istanbul'`: iş saatleri yerel saatle saklandığı
+  için "şimdi" de yerel olarak karşılaştırılır (sunucu UTC olsa bile).
+- İndeks: `idx_randevu_musteri (musteri_id, baslangic DESC)` geçmiş listesini
+  sıralama maliyeti olmadan verir.
+
+### LLM tool tanımı
+
+```json
+{
+  "name": "randevularim",
+  "description": "Müşterinin kendi randevularını getirir: yaklasan (planlanmış), gecmis (son N) ve son_bakim (en yeni tamamlanmış periyodik bakım). 'Randevum ne zaman?', 'geçen sefer neredeydim?', 'son bakımım ne zamandı?' sorularında kullan. İptal için randevu_id gerekir.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "limit": { "type": "integer", "description": "Geçmiş listesi uzunluğu (1-50, varsayılan 10)" }
+    }
+  }
+}
+```
+
+---
+
 ## 8. `POST /bot/musteri`
 
 Müşterinin ad/soyad bilgisini yazar. Bot ismi konuşma sırasında öğrendiği için
@@ -921,3 +1061,5 @@ Bot `musteri` tablosunda yalnız `ad`, `soyad` kolonlarını güncelleyebilir
   }
 }
 ```
+
+---
