@@ -990,6 +990,100 @@ SELECT r.randevu_id, r.tur_kodu, rt.ad, r.baslangic, r.bitis, r.durum,
 
 ---
 
+## 6. `POST /bot/randevu/{id}/iptal`
+
+Randevuyu **silmez**, durumunu `IPTAL` yapar; o saat yeniden müsait olur
+(`EXCLUDE` kısıtları yalnız `IPTAL` olmayan satırları sayar).
+
+### İstek
+
+```
+POST /bot/randevu/4211/iptal
+```
+
+| Header | Zorunlu |
+|---|---|
+| `X-Bot-Token` | ✅ |
+| `X-Musteri-Telefon` | ✅ |
+
+Gövde yoktur. `id`, `GET /bot/randevu` yanıtındaki `randevu_id`'dir.
+Sondaki eğik çizgi kabul edilir (`.../iptal/`); daha derin yollar `404` alır.
+Aynı yol üzerinde `GET /bot/randevu/` liste ucudur (genel kural: sondaki eğik
+çizgi kabul edilir).
+
+### Başarılı yanıt — `200 OK`
+
+```json
+{
+  "ok": true,
+  "veri": {
+    "randevu_id": 4211,
+    "durum": "IPTAL",
+    "bilgi": "Randevunuz iptal edildi; o saat yeniden müsait."
+  }
+}
+```
+
+### İptal edilebilirlik
+
+| Mevcut durum | Sonuç |
+|---|---|
+| `PLANLANDI` ve **başlamamış** | ✅ `IPTAL` |
+| `PLANLANDI` ama **başlangıcı geçmiş** | `409 IPTAL_EDILEMEZ` (`detay.sebep = GECMIS`) — no-show kaydı personelin işidir |
+| `TAMAMLANDI`, `GELMEDI`, `IPTAL` | `409 IPTAL_EDILEMEZ` (`detay.durum` mevcut durumu taşır) |
+| Başka müşterinin randevusu | `404 RANDEVU_YOK` — varlık sızdırılmaz |
+| Olmayan id | `404 RANDEVU_YOK` |
+
+Bu şartlar RLS politikasında da vardır (`p_randevu_bot_iptal`: `USING` yalnız
+`PLANLANDI`, `WITH CHECK` yalnız `IPTAL`); API bunları anlamlı koda çevirir.
+
+### Hata yanıtları
+
+| Kod | HTTP | `kullaniciya_goster` | Koşul |
+|---|---|---|---|
+| `RANDEVU_YOK` | 404 | true | Id yok veya başka müşterinin |
+| `IPTAL_EDILEMEZ` | 409 | true | Durum `PLANLANDI` değil; `detay.durum` |
+| `YOL_YOK` | 404 | true | Yol biçimi bozuk (`/bot/randevu/abc/iptal`, derin alt yol) |
+| `GECERSIZ_PARAMETRE` | 400 | true | Id sayısal ama `bigint` aralığını aşıyor |
+| `YONTEM_DESTEKLENMIYOR` | 405 | true | `POST` dışı |
+
+### Veritabanı
+
+```sql
+-- 1) Görünürlük ve durum (RLS: yalnız kendi satırı)
+SELECT durum FROM randevu
+ WHERE randevu_id = $1 AND musteri_id = fn_aktif_musteri_id();
+
+-- 2) İptal (yarışın son sözü bu koşuldadır)
+UPDATE randevu SET durum = 'IPTAL'
+ WHERE randevu_id = $1 AND musteri_id = fn_aktif_musteri_id()
+   AND durum = 'PLANLANDI'
+   AND baslangic >= (now() AT TIME ZONE 'Europe/Istanbul')
+ RETURNING randevu_id;
+```
+
+`SELECT ... FOR UPDATE` **kullanılmaz**: kilit, RLS'nin UPDATE politikasına tabidir
+ve o politika yalnız `PLANLANDI` satırlarını kapsadığı için `IPTAL`/`TAMAMLANDI`
+bir satır kilit sorgusunda görünmez — yanlış `404` üretirdi.
+
+### LLM tool tanımı
+
+```json
+{
+  "name": "randevu_iptal",
+  "description": "Müşterinin kendi randevusunu iptal eder. Yalnızca PLANLANDI durumundaki ve henüz başlamamış randevular iptal edilebilir; başlamış, tamamlanmış veya zaten iptal edilmiş randevuda 409 döner. randevu_id, randevularim yanıtından alınır.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "id": { "type": "integer", "description": "İptal edilecek randevunun kimliği" }
+    },
+    "required": ["id"]
+  }
+}
+```
+
+---
+
 ## 8. `POST /bot/musteri`
 
 Müşterinin ad/soyad bilgisini yazar. Bot ismi konuşma sırasında öğrendiği için

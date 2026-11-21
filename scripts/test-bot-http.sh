@@ -273,6 +273,38 @@ SELECT m.musteri_id, 1, 'SERVIS_GIRIS', 4, 'VIN00000000000042',
        :'g'::date - interval '7 day' + time '11:00',
        :'g'::date - interval '7 day' + time '11:30', 'TAMAMLANDI', 'PANEL'
   FROM musteri m WHERE m.telefon = '+905550001199';
+-- Baslamis ama bitmemis PLANLANDI: iptal KAPALI olmali (baslangic gecmis).
+-- Tam gun pencereli test turu sayesinde saat kac olursa olsun seed calisir.
+INSERT INTO randevu_turu (tur_kodu, ad, sure_dakika, departman, yetkinlik_id)
+VALUES ('TEST_TAMGUN', 'Test Tam Gün', 60, 'SATIS', NULL);
+-- mesai yalnız Pazartesi-Cumartesi (gun 1-6); tür de o günlerde tanımlı.
+INSERT INTO tur_saat (tur_kodu, gun, baslangic, bitis)
+SELECT 'TEST_TAMGUN', g, '00:00'::time, '23:59'::time FROM generate_series(1, 6) g;
+INSERT INTO musteri (ad, soyad, telefon) VALUES ('Devam', 'Eden', '+905550001230');
+INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak)
+SELECT m.musteri_id, 1, 'TEST_TAMGUN', 1, NULL,
+       LEAST(date_trunc('hour', (now() AT TIME ZONE 'Europe/Istanbul')),
+             date_trunc('day',  (now() AT TIME ZONE 'Europe/Istanbul')) + interval '22 hours'),
+       LEAST(date_trunc('hour', (now() AT TIME ZONE 'Europe/Istanbul')),
+             date_trunc('day',  (now() AT TIME ZONE 'Europe/Istanbul')) + interval '22 hours')
+           + interval '1 hour',
+       'PLANLANDI', 'WHATSAPP'
+  FROM musteri m
+ WHERE m.telefon = '+905550001230'
+   -- Pazar günü mesai/tür saati yok; randevu oluşturulamaz (test SKIP'e düşer).
+   AND extract(isodow FROM (now() AT TIME ZONE 'Europe/Istanbul')) <= 6;
+
+-- Gecmis PLANLANDI (personel henuz GELMEDI isaretlemedi) — iptale kapali olmali
+INSERT INTO musteri (ad, soyad, telefon) VALUES ('Gelmedi', 'Aday', '+905550001220');
+INSERT INTO arac (vin, versiyon_id, sube_id, renk, plaka, durum, musteri_id) VALUES
+  ('VIN00000000000044', 1, 1, 'Beyaz', '06NN01', 'SATILDI',
+   (SELECT musteri_id FROM musteri WHERE telefon = '+905550001220'));
+INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak)
+SELECT m.musteri_id, 1, 'SERVIS_GIRIS', 4, 'VIN00000000000044',
+       :'g'::date - interval '14 day' + time '14:00',
+       :'g'::date - interval '14 day' + time '14:30', 'PLANLANDI', 'WHATSAPP'
+  FROM musteri m WHERE m.telefon = '+905550001220';
+
 -- Gizli arac testi: bu test surusu yapildiginda arac stoktaydi, sonra baska
 -- musteriye satildi -> musteri 8 listesinde arac alani null gelmeli.
 INSERT INTO musteri (ad, soyad, telefon) VALUES ('Baskasi', 'Sahip', '+905550001210');
@@ -1124,6 +1156,158 @@ if printf '%s' "$SON" | grep -qF '"ad":"Zeynep"' \
 else
   echo "[FAIL] Musteri: kismi guncelleme ad'i ezdi"; echo "       $SON"; KALAN=$((KALAN + 1))
 fi
+
+echo "--- POST /bot/randevu/{id}/iptal ---"
+TEL_I='X-Musteri-Telefon: +905550007801'
+YENI_I=$(curl -s -X POST -H "$TOK" -H "$TEL_I" -H 'Content-Type: application/json' \
+  -d "{\"sube_id\":1,\"tur_kodu\":\"TEST_SURUSU\",\"tarih\":\"$GUN2\",\"baslangic\":\"11:00\",\"ad\":\"Iptal\",\"soyad\":\"Test\"}" \
+  "$TABAN/bot/randevu")
+IID=$(printf '%s' "$YENI_I" | sed -n 's/.*"randevu_id":\([0-9]*\).*/\1/p')
+if [ -n "$IID" ]; then
+  echo "[PASS] Iptal: iptal edilecek randevu olusturuldu (id=$IID)"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Iptal: randevu olusturulamadi"; echo "       $YENI_I"; KALAN=$((KALAN + 1))
+fi
+ANN=$(curl -s -w '\n%{http_code}' -X POST -H "$TOK" -H "$TEL_I" "$TABAN/bot/randevu/$IID/iptal")
+KOD_ANN=$(printf '%s' "$ANN" | tail -n1)
+GOV_ANN=$(printf '%s' "$ANN" | sed '$d')
+if [ "$KOD_ANN" = "200" ] && printf '%s' "$GOV_ANN" | grep -qF '"durum":"IPTAL"'; then
+  echo "[PASS] Iptal: PLANLANDI -> IPTAL"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Iptal: iptal yaniti yanlis"; echo "       HTTP $KOD_ANN $GOV_ANN"; KALAN=$((KALAN + 1))
+fi
+# Ayni randevu tekrar iptal edilemez; yanit mevcut durumu tasir
+IPTAL_TEK=$(curl -s -X POST -H "$TOK" -H "$TEL_I" "$TABAN/bot/randevu/$IID/iptal")
+if printf '%s' "$IPTAL_TEK" | grep -qF '"kod":"IPTAL_EDILEMEZ"' \
+   && printf '%s' "$IPTAL_TEK" | grep -qF '"detay":{"durum":"IPTAL"}'; then
+  echo "[PASS] Iptal: zaten iptal edilmis -> 409 + detay.durum=IPTAL"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Iptal: tekrar iptal yaniti eksik"; echo "       $IPTAL_TEK"; KALAN=$((KALAN + 1))
+fi
+# Baslamis (devam eden) PLANLANDI iptal edilemez: sebep GECMIS olmali
+DEVAM_ID=$(curl -s -H "$TOK" -H 'X-Musteri-Telefon: +905550001230' "$TABAN/bot/randevu" \
+  | sed -n 's/.*"yaklasan":\[{"randevu_id":\([0-9]*\).*/\1/p')
+if [ -z "$DEVAM_ID" ]; then
+  if [ "$(date +%u)" = "7" ]; then
+    echo "[SKIP] Iptal: devam eden randevu testi (Pazar günü mesai yok)"
+  else
+    echo "[FAIL] Iptal: devam eden randevu listede yok"; KALAN=$((KALAN + 1))
+  fi
+else
+  YANIT_DEV=$(curl -s -w '\n%{http_code}' -X POST -H "$TOK" \
+    -H 'X-Musteri-Telefon: +905550001230' "$TABAN/bot/randevu/$DEVAM_ID/iptal")
+  KOD_DEV=$(printf '%s' "$YANIT_DEV" | tail -n1)
+  GOV_DEV=$(printf '%s' "$YANIT_DEV" | sed '$d')
+  if [ "$KOD_DEV" = "409" ] && printf '%s' "$GOV_DEV" | grep -qF '"sebep":"GECMIS"' \
+     && printf '%s' "$GOV_DEV" | grep -qF '"durum":"PLANLANDI"'; then
+    echo "[PASS] Iptal: devam eden (baslamis) randevu -> 409 sebep=GECMIS"; GECEN=$((GECEN + 1))
+  else
+    echo "[FAIL] Iptal: devam eden randevu yaniti ($KOD_DEV)"; echo "       $GOV_DEV"; KALAN=$((KALAN + 1))
+  fi
+fi
+# Gecmis PLANLANDI (no-show) iptal edilemez
+GECMIS_PL=$(curl -s -H "$TOK" -H 'X-Musteri-Telefon: +905550001220' "$TABAN/bot/randevu" \
+  | sed -n 's/.*"gecmis":\[{"randevu_id":\([0-9]*\).*/\1/p')
+if [ -z "$GECMIS_PL" ]; then
+  echo "[FAIL] Iptal: gecmis PLANLANDI randevusu bulunamadi"; KALAN=$((KALAN + 1))
+else
+  YANIT_GPL=$(curl -s -w '\n%{http_code}' -X POST -H "$TOK" \
+    -H 'X-Musteri-Telefon: +905550001220' "$TABAN/bot/randevu/$GECMIS_PL/iptal")
+  KOD_GPL=$(printf '%s' "$YANIT_GPL" | tail -n1)
+  GOV_GPL=$(printf '%s' "$YANIT_GPL" | sed '$d')
+  if [ "$KOD_GPL" = "409" ] && printf '%s' "$GOV_GPL" | grep -qF '"sebep":"GECMIS"'; then
+    echo "[PASS] Iptal: gecmis PLANLANDI -> 409 (sebep=GECMIS)"; GECEN=$((GECEN + 1))
+  else
+    echo "[FAIL] Iptal: gecmis PLANLANDI yaniti ($KOD_GPL)"; echo "       $GOV_GPL"; KALAN=$((KALAN + 1))
+  fi
+fi
+# Paralel cift iptal: tam olarak biri kazanir, digeri detayli 409
+if [ -z "$IID" ]; then
+  echo "[FAIL] Iptal: paralel test icin randevu id yok"; KALAN=$((KALAN + 1))
+else
+  PID=$(curl -s -X POST -H "$TOK" -H "$TEL_I" -H 'Content-Type: application/json' \
+    -d "{\"sube_id\":1,\"tur_kodu\":\"TEST_SURUSU\",\"tarih\":\"$GUN2\",\"baslangic\":\"11:00\"}" \
+    "$TABAN/bot/randevu" | sed -n 's/.*"randevu_id":\([0-9]*\).*/\1/p')
+  if [ -z "$PID" ]; then
+    echo "[FAIL] Iptal: paralel test icin ikinci randevu olusmadi"; KALAN=$((KALAN + 1))
+  else
+    for n in 1 2; do
+      curl -s -o "/tmp/md-ip$n.json" -w '%{http_code}' -X POST -H "$TOK" -H "$TEL_I" \
+        "$TABAN/bot/randevu/$PID/iptal" > "/tmp/md-ipc$n.txt" &
+      eval "IPP$n=$!"
+    done
+    wait $IPP1 $IPP2
+    C1=$(cat /tmp/md-ipc1.txt); C2=$(cat /tmp/md-ipc2.txt)
+    DETAY=0
+    grep -qF '"detay":{"durum":"IPTAL"}' /tmp/md-ip1.json && DETAY=$((DETAY + 1))
+    grep -qF '"detay":{"durum":"IPTAL"}' /tmp/md-ip2.json && DETAY=$((DETAY + 1))
+    if { [ "$C1" = "200" ] && [ "$C2" = "409" ]; } || { [ "$C1" = "409" ] && [ "$C2" = "200" ]; } \
+       && [ "$DETAY" -eq 1 ]; then
+      echo "[PASS] Iptal: paralel cift iptal -> 1x200 + 1x409 (detayli)"
+      GECEN=$((GECEN + 1))
+    else
+      echo "[FAIL] Iptal: paralel cift iptal beklenmedik ($C1/$C2, detay=$DETAY)"
+      KALAN=$((KALAN + 1))
+    fi
+  fi
+fi
+# Iptal sonrasi ayni musteri ayni saate yeniden randevu alabilir (slot acildi)
+YENI_I2=$(curl -s -w '\n%{http_code}' -X POST -H "$TOK" -H "$TEL_I" -H 'Content-Type: application/json' \
+  -d "{\"sube_id\":1,\"tur_kodu\":\"TEST_SURUSU\",\"tarih\":\"$GUN2\",\"baslangic\":\"11:00\"}" \
+  "$TABAN/bot/randevu")
+KOD_I2=$(printf '%s' "$YENI_I2" | tail -n1)
+if [ "$KOD_I2" = "201" ]; then
+  echo "[PASS] Iptal: iptal edilen saate yeniden randevu alinabiliyor"; GECEN=$((GECEN + 1))
+  IID2=$(printf '%s' "$YENI_I2" | sed '$d' | sed -n 's/.*"randevu_id":\([0-9]*\).*/\1/p')
+else
+  echo "[FAIL] Iptal: slot yeniden acilmadi (HTTP $KOD_I2)"; KALAN=$((KALAN + 1)); IID2=""
+fi
+# Baskasinin randevusu: 404 (RLS gorunmez, varlik sizdirmaz)
+if [ -z "$IID2" ]; then
+  echo "[FAIL] Iptal: izolasyon testi icin yeniden olusan randevu yok"; KALAN=$((KALAN + 1))
+else
+  bekle "Iptal: baska musterinin randevusu -> 404" 404 '"kod":"RANDEVU_YOK"' \
+    -X POST -H "$TOK" -H "$TEL_B" "$TABAN/bot/randevu/$IID2/iptal"
+fi
+# Olmayan id
+bekle "Iptal: olmayan randevu -> 404" 404 '"kod":"RANDEVU_YOK"' \
+  -X POST -H "$TOK" -H "$TEL_I" "$TABAN/bot/randevu/999999/iptal"
+# TAMAMLANDI randevu iptal edilemez (musteri 8'in gecmisi)
+GECMIS_ID=$(curl -s -H "$TOK" -H "$TEL_G" "$TABAN/bot/randevu" \
+  | sed -n 's/.*"gecmis":\[{"randevu_id":\([0-9]*\).*/\1/p')
+if [ -n "$GECMIS_ID" ]; then
+  YANIT_TAM=$(curl -s -w '\n%{http_code}' -X POST -H "$TOK" -H "$TEL_G" \
+    "$TABAN/bot/randevu/$GECMIS_ID/iptal")
+  KOD_TAM=$(printf '%s' "$YANIT_TAM" | tail -n1)
+  GOV_TAM=$(printf '%s' "$YANIT_TAM" | sed '$d')
+  if [ "$KOD_TAM" = "409" ] && printf '%s' "$GOV_TAM" | grep -qF '"kod":"IPTAL_EDILEMEZ"'; then
+    echo "[PASS] Iptal: TAMAMLANDI/IPTAL randevu -> 409"; GECEN=$((GECEN + 1))
+  else
+    echo "[FAIL] Iptal: tamamlanmis randevu yaniti ($KOD_TAM)"; KALAN=$((KALAN + 1))
+  fi
+fi
+# Yol ve yontem
+bekle "Iptal: sayisal olmayan id -> 404 YOL_YOK" 404 '"kod":"YOL_YOK"' \
+  -X POST -H "$TOK" -H "$TEL_I" "$TABAN/bot/randevu/abc/iptal"
+bekle "Iptal: derin alt yol -> 404 YOL_YOK" 404 '"kod":"YOL_YOK"' \
+  -X POST -H "$TOK" -H "$TEL_I" "$TABAN/bot/randevu/1/iptal/ekstra"
+bekle "Iptal: id'siz yol -> 404 YOL_YOK" 404 '"kod":"YOL_YOK"' \
+  -X POST -H "$TOK" -H "$TEL_I" "$TABAN/bot/randevu/1"
+bekle "Iptal: int siniri asan id -> 404" 404 '"kod":"RANDEVU_YOK"' \
+  -X POST -H "$TOK" -H "$TEL_I" "$TABAN/bot/randevu/2147483648/iptal"
+bekle "Iptal: long siniri asan id -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -X POST -H "$TOK" -H "$TEL_I" "$TABAN/bot/randevu/99999999999999999999/iptal"
+# Sondaki egik cizgi: liste/olusturma ve iptal yollari kabul edilir
+bekle "Randevu: /bot/randevu/ (sondaki egik cizgi) liste doner" 200 '"toplam"' \
+  -H "$TOK" -H "$TEL_G" "$TABAN/bot/randevu/"
+bekle "Iptal: iz birakilan egik cizgi kabul edilir" 404 '"kod":"RANDEVU_YOK"' \
+  -X POST -H "$TOK" -H "$TEL_I" "$TABAN/bot/randevu/999999/iptal/"
+bekle "Iptal: GET -> 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' \
+  -H "$TOK" -H "$TEL_I" "$TABAN/bot/randevu/$IID/iptal"
+bekle "Iptal: token yok -> 401" 401 '"kod":"YETKISIZ_ISTEK"' \
+  -X POST -H "$TEL_I" "$TABAN/bot/randevu/$IID/iptal"
+bekle "Iptal: kimlik yok -> 401" 401 '"kod":"KIMLIK_YOK"' \
+  -X POST -H "$TOK" "$TABAN/bot/randevu/$IID/iptal"
 
 echo "--- Baslangic guvenlik kontrolleri ---"
 
