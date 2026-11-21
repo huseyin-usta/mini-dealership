@@ -1,6 +1,8 @@
 package tr.edu.etu.dealership;
 
 import com.sun.net.httpserver.HttpServer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tr.edu.etu.dealership.config.Ayarlar;
 import tr.edu.etu.dealership.db.Veritabani;
 import tr.edu.etu.dealership.web.BotTokeni;
@@ -12,12 +14,11 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.logging.Logger;
 
 /** Uygulama giriş noktası: bağlantı havuzunu ve HTTP sunucusunu kurar. */
 public final class Main {
 
-    private static final Logger LOG = Logger.getLogger(Main.class.getName());
+    private static final Logger LOG = LoggerFactory.getLogger(Main.class);
 
     public static void main(String[] args) throws IOException {
         Ayarlar ayarlar = Ayarlar.ortamdan();
@@ -25,7 +26,7 @@ public final class Main {
         BotTokeni token = new BotTokeni(ayarlar.botToken());
 
         if (!db.hazirMi()) {
-            LOG.severe("Veritabanına bağlanılamadı: " + ayarlar.jdbcUrl());
+            LOG.error("Veritabanına bağlanılamadı: {}", ayarlar.jdbcUrl());
             db.close();
             System.exit(1);
         }
@@ -42,7 +43,7 @@ public final class Main {
         sunucu.createContext("/saglik", HttpYardimci.saglik(db));
 
         sunucu.start();
-        LOG.info("Backend dinliyor: http://" + ayarlar.bindAdresi() + ":" + ayarlar.httpPort());
+        LOG.info("Backend dinliyor: http://{}:{}", ayarlar.bindAdresi(), ayarlar.httpPort());
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             LOG.info("Kapatılıyor...");

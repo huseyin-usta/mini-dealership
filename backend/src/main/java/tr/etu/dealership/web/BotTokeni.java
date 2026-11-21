@@ -30,14 +30,22 @@ public final class BotTokeni {
         if (botToken == null || botToken.isBlank()) {
             throw new IllegalArgumentException("BOT_TOKEN boş olamaz");
         }
-        this.beklenen = botToken.getBytes(StandardCharsets.UTF_8);
+        // Yapılandırma .env'den okunurken satır sonu/boşluk kalabilir; iki taraf
+        // da kırpılmış değerle karşılaştırılır (bkz. gecerliMi).
+        this.beklenen = botToken.trim().getBytes(StandardCharsets.UTF_8);
     }
 
     /** İstekteki başlık değeri beklenen token ile birebir aynı mı? */
     public boolean gecerliMi(String gelen) {
-        if (gelen == null || gelen.isEmpty()) {
+        if (gelen == null) {
             return false;
         }
-        return MessageDigest.isEqual(beklenen, gelen.getBytes(StandardCharsets.UTF_8));
+        // Köprü .env'den okurken satır sonu/boşluk kalabilir; iki taraf da
+        // kırpılmış değerle karşılaştırır, aksi halde tüm istekler 401 döner.
+        String kirpilmis = gelen.trim();
+        if (kirpilmis.isEmpty()) {
+            return false;
+        }
+        return MessageDigest.isEqual(beklenen, kirpilmis.getBytes(StandardCharsets.UTF_8));
     }
 }

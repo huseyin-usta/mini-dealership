@@ -2,16 +2,16 @@ package tr.edu.etu.dealership.web;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tr.edu.etu.dealership.db.BotKimligi;
 import tr.edu.etu.dealership.db.Veritabani;
 
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * Bot endpoint'lerinin ortak iskeleti.
@@ -27,7 +27,7 @@ import java.util.logging.Logger;
  */
 public abstract class BotHandler implements HttpHandler {
 
-    private static final Logger LOG = Logger.getLogger(BotHandler.class.getName());
+    private static final Logger LOG = LoggerFactory.getLogger(BotHandler.class);
 
     protected final Veritabani db;
     protected final BotTokeni token;
@@ -46,6 +46,16 @@ public abstract class BotHandler implements HttpHandler {
                 JsonYanit.yaz(ex, 401,
                         JsonYanit.hatali("YETKISIZ_ISTEK", "İstek doğrulanamadı.",
                                 true, null));
+                return;
+            }
+
+            // HttpServer context'leri onek ile eşleşir (/bot/sube/ekstra da gelir).
+            // Sözleşmede tanımlı olmayan yol 404 döner.
+            String istenenYol = ex.getRequestURI().getPath();
+            String tanimliYol = ex.getHttpContext().getPath();
+            if (!tanimliYol.equals(istenenYol) && !(tanimliYol + "/").equals(istenenYol)) {
+                JsonYanit.yaz(ex, 404,
+                        JsonYanit.hatali("YOL_YOK", "Böyle bir kaynak bulunmuyor.", true, null));
                 return;
             }
 
@@ -79,10 +89,15 @@ public abstract class BotHandler implements HttpHandler {
                         return;
                     }
                     Object veri = isle(ex, conn);
-                    conn.commit();
-                    if (veri != null) {
-                        JsonYanit.yaz(ex, 200, JsonYanit.basarili(veri));
+                    if (veri == null) {
+                        // Sözleşme her endpoint için gövde öngörür; null dönen bir
+                        // handler protokol ihlalidir. Commit'ten ÖNCE fırlatılır ki
+                        // istemci 500 alırken yazma kalıcı olmasın.
+                        throw new IllegalStateException("Handler gövde üretmedi: "
+                                + ex.getRequestURI().getPath());
                     }
+                    conn.commit();
+                    JsonYanit.yaz(ex, 200, JsonYanit.basarili(veri));
                 } catch (ApiHatasi e) {
                     conn.rollback();
                     JsonYanit.yaz(ex, e.httpDurum(),
@@ -97,11 +112,11 @@ public abstract class BotHandler implements HttpHandler {
         } catch (SQLException e) {
             // Sözleşme: SISTEM_HATASI tek biçimdedir (HTTP 500). Altyapı arızası
             // ile iş hatasını ayırmak istemciye fayda sağlamaz; log'da ayrışır.
-            LOG.log(Level.SEVERE, "Veritabanı hatası: " + ex.getRequestURI(), e);
+            LOG.error("Veritabanı hatası: {}", ex.getRequestURI(), e);
             JsonYanit.yaz(ex, 500,
                     JsonYanit.hatali("SISTEM_HATASI", "Şu an hizmet veremiyorum.", true, null));
         } catch (Exception e) {
-            LOG.log(Level.SEVERE, "Beklenmedik hata: " + ex.getRequestURI(), e);
+            LOG.error("Beklenmedik hata: {}", ex.getRequestURI(), e);
             JsonYanit.yaz(ex, 500,
                     JsonYanit.hatali("SISTEM_HATASI", "Şu an hizmet veremiyorum.", true, null));
         } finally {
@@ -120,15 +135,24 @@ public abstract class BotHandler implements HttpHandler {
         return "GET";
     }
 
-    /** Query parametrelerini okur (kodlama çözülmüş). */
+    /**
+     * Query parametrelerini okur (kodlama çözülmüş). Aynı parametre iki kez
+     * gelirse sessizce birini seçmek yerine açık hata döner: hangi değerin
+     * kullanıldığı istemciye göre değişen bir davranış güvenlik açığı üretir.
+     */
     protected static Map<String, String> parametreler(HttpExchange ex) {
-        Map<String, String> sonuc = new HashMap<>();
+        Map<String, String> sonuc = new LinkedHashMap<>();
         String q = ex.getRequestURI().getRawQuery();
         if (q == null || q.isEmpty()) return sonuc;
         for (String parca : q.split("&")) {
             int i = parca.indexOf('=');
             if (i <= 0) continue;
-            sonuc.put(decode(parca.substring(0, i)), decode(parca.substring(i + 1)));
+            String ad = decode(parca.substring(0, i));
+            if (sonuc.containsKey(ad)) {
+                throw ApiHatasi.goster("GECERSIZ_PARAMETRE",
+                        ad + " parametresi birden çok kez gönderilmiş.", 400, null);
+            }
+            sonuc.put(ad, decode(parca.substring(i + 1)));
         }
         return sonuc;
     }

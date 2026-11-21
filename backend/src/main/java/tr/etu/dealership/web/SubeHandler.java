@@ -21,10 +21,10 @@ import java.util.Map;
 public final class SubeHandler extends BotHandler {
 
     private static final String SEHIR_LISTESI_SQL =
-            "SELECT DISTINCT sehir FROM sube ORDER BY sehir";
+            "SELECT DISTINCT sehir COLLATE \"C\" AS sehir FROM sube ORDER BY 1";
 
     private static final String SUBE_LISTESI_SQL =
-            "SELECT sube_id, ad FROM sube WHERE sehir = ? ORDER BY ad";
+            "SELECT sube_id, ad FROM sube WHERE sehir = ? ORDER BY ad COLLATE \"C\"";
 
     public SubeHandler(Veritabani db, BotTokeni token) {
         super(db, token);

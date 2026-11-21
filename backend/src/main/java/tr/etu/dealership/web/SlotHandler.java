@@ -4,15 +4,17 @@ import com.sun.net.httpserver.HttpExchange;
 import tr.edu.etu.dealership.db.Veritabani;
 
 import java.sql.Connection;
-import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * {@code GET /bot/slot} — sözleşme: docs/api/bot-sozlesmesi.md
@@ -27,11 +29,37 @@ public final class SlotHandler extends BotHandler {
     private static final int AZAMI_GUN = 21;
 
     /**
+     * İş kuralları Türkiye saatine göredir. Sunucu UTC'de çalışsa bile "bugün"
+     * İstanbul'a göre hesaplanır; aksi halde 21:00-00:00 arasında bir gün geri
+     * kayma olur ve geçerli tarih yanlışlıkla geçmiş sayılır.
+     */
+    private static final ZoneId BOLGE = ZoneId.of("Europe/Istanbul");
+
+    /**
+     * Araç gerektiren türler — tek kaynak: {@code db/150_randevu.sql} CHECK kısıtı
+     * ve aynı araç için EXCLUDE kuralı. Beş tür de araç kaynağını tüketir:
+     * test sürüşü, yeni araç teslimi, servisten teslim, periyodik bakım,
+     * servise giriş. Araç inceleme ve satın alım araç istemez.
+     */
+    private static final String ARAC_GEREKEN_TURLER =
+            "'TEST_SURUSU','TESLIMAT','SERVIS_TESLIM','PERIYODIK_BAKIM','SERVIS_GIRIS'";
+
+    /**
      * Müsaitlik sorgusu (docs/api/bot-sozlesmesi.md §2, doğrulanmış hali).
-     * Parametreler: 1 tarih, 2 tur_kodu, 3 sube_id, 4 arac_vin (NULL olabilir).
+     *
+     * <p>Parametre sırası:
+     * <ol>
+     *   <li>tarih, tarih, tur_kodu, tarih — olası dilimler</li>
+     *   <li>tur_kodu — türün kuralları</li>
+     *   <li>sube_id, tarih, tarih — uygun çalışanlar (şube + yetkinlik geçerliliği)</li>
+     *   <li>sube_id — test sürüşü aracı</li>
+     *   <li>sube_id — yeni araç teslimi</li>
+     *   <li>sube_id — servisten teslim</li>
+     *   <li>arac_vin ×4 — araç filtresi</li>
+     * </ol>
      */
     private static final String SLOT_SQL = """
-            WITH olası AS (
+            WITH olası_ham AS (
                 SELECT gs AS baslangic,
                        gs + (rt.sure_dakika * interval '1 minute') AS bitis
                   FROM randevu_turu rt
@@ -46,13 +74,21 @@ public final class SlotHandler extends BotHandler {
                    AND extract(isodow FROM ?::date) = ts.gun
                    AND m.acilis <= ts.baslangic AND ts.bitis <= m.kapanis
             ),
+            -- Aynı tür için örtüşen saat pencereleri tanımlanabilir; her dilim
+            -- bir kez listelenir.
+            olası AS (
+                SELECT DISTINCT baslangic, bitis FROM olası_ham
+            ),
             tur AS (
                 SELECT rt.tur_kodu, rt.yetkinlik_id, rt.departman,
-                       rt.tur_kodu IN ('TEST_SURUSU', 'TESLIMAT', 'SERVIS_TESLIM') AS arac_gerekli
+                       rt.tur_kodu IN (""" + ARAC_GEREKEN_TURLER + """
+                       ) AS arac_gerekli
                   FROM randevu_turu rt
                  WHERE rt.tur_kodu = ?
             ),
             uygun_calisan AS (
+                -- Yetkinliğin randevu günü geçerli olması şart: trigger aynı kuralı
+                -- uygular (bitiş günü dahil), slot üretimi ondan ayrışmamalı.
                 SELECT c.calisan_id
                   FROM calisan c, tur t
                  WHERE c.sube_id = ?
@@ -61,21 +97,34 @@ public final class SlotHandler extends BotHandler {
                    AND (t.yetkinlik_id IS NULL OR EXISTS (
                          SELECT 1 FROM calisan_yetkinlik cy
                           WHERE cy.calisan_id = c.calisan_id
-                            AND cy.yetkinlik_id = t.yetkinlik_id))
+                            AND cy.yetkinlik_id = t.yetkinlik_id
+                            AND cy.verilis_tarihi <= ?::date
+                            AND (cy.bitis_tarihi IS NULL OR cy.bitis_tarihi >= ?::date)))
             ),
             uygun_arac AS (
-                -- Test sürüşü/teslimat: şubede stokta olan araçlar
+                -- Test sürüşü: şubede stokta olan araç
                 SELECT a.vin, v.paket_adi, md.ad AS model, a.renk
                   FROM arac a
                   JOIN versiyon v ON v.versiyon_id = a.versiyon_id
                   JOIN model   md ON md.model_id   = v.model_id
-                 WHERE a.sube_id = ? AND a.durum = 'STOKTA'
-                   AND (SELECT arac_gerekli FROM tur)
-                   AND (SELECT tur_kodu FROM tur) <> 'SERVIS_TESLIM'
+                 WHERE (SELECT tur_kodu FROM tur) = 'TEST_SURUSU'
+                   AND a.sube_id = ?
+                   AND a.durum = 'STOKTA'
                 UNION ALL
-                -- Servisten teslim: müşterinin bu şubede açık ve TESLİME HAZIR
-                -- kaydı olan araçlar. Aynı araç için birden çok açık kayıt
-                -- olasılığına karşı DISTINCT ON ile tekilleştirilir.
+                -- Yeni araç teslimi: müşterinin kendi satılmış aracı. Yoldaki
+                -- araçların sahibi yoktur (bkz. db/110_arac.sql CHECK), bu yüzden
+                -- "müşterinin yoldaki aracı" diye bir kavram yoktur.
+                SELECT a.vin, v.paket_adi, md.ad AS model, a.renk
+                  FROM arac a
+                  JOIN versiyon v ON v.versiyon_id = a.versiyon_id
+                  JOIN model   md ON md.model_id   = v.model_id
+                 WHERE (SELECT tur_kodu FROM tur) = 'TESLIMAT'
+                   AND a.sube_id = ?
+                   AND a.durum = 'SATILDI'
+                   AND a.musteri_id = fn_aktif_musteri_id()
+                UNION ALL
+                -- Servisten teslim: bu şubede açık ve TESLİME HAZIR kaydı olan araç.
+                -- DISTINCT: aynı araç için birden çok açık kayıt olabilir.
                 SELECT DISTINCT a.vin, v.paket_adi, md.ad AS model, a.renk
                   FROM arac a
                   JOIN versiyon v ON v.versiyon_id = a.versiyon_id
@@ -85,6 +134,18 @@ public final class SlotHandler extends BotHandler {
                    AND msd.kapandi_mi = false
                    AND msd.son_durum = 'TESLIME_HAZIR'
                    AND msd.sube_id = ?
+                UNION ALL
+                -- Periyodik bakım / servise giriş: müşterinin kendi aracı.
+                -- Şube serbest (araç ağ içinde herhangi bir şubeye gelebilir);
+                -- EXCLUDE kısıtı aynı aracın aynı anda iki randevuda olmasını
+                -- zaten engeller, slot üretimi de onu hesaba katar.
+                SELECT a.vin, v.paket_adi, md.ad AS model, a.renk
+                  FROM arac a
+                  JOIN versiyon v ON v.versiyon_id = a.versiyon_id
+                  JOIN model   md ON md.model_id   = v.model_id
+                 WHERE (SELECT tur_kodu FROM tur) IN ('PERIYODIK_BAKIM', 'SERVIS_GIRIS')
+                   AND a.durum = 'SATILDI'
+                   AND a.musteri_id = fn_aktif_musteri_id()
             )
             SELECT o.baslangic::time AS baslangic,
                    o.bitis::time     AS bitis,
@@ -98,7 +159,7 @@ public final class SlotHandler extends BotHandler {
                                           'vin',   ua.vin,
                                           'model', ua.model,
                                           'paket', ua.paket_adi,
-                                          'renk',  ua.renk))
+                                          'renk',  ua.renk) ORDER BY ua.vin)
                                  FROM uygun_arac ua
                                 WHERE (?::varchar IS NULL OR ua.vin = ?)
                                   AND NOT EXISTS (SELECT 1 FROM v_dolu_slot d
@@ -124,12 +185,18 @@ public final class SlotHandler extends BotHandler {
             """;
 
     private static final String TUR_SAATLERI_SQL = """
-            SELECT ts.baslangic, ts.bitis
+            SELECT ts.gun, ts.baslangic, ts.bitis
               FROM tur_saat ts
              WHERE ts.tur_kodu = ?
-             GROUP BY ts.baslangic, ts.bitis
-             ORDER BY ts.baslangic
+             ORDER BY ts.gun, ts.baslangic
             """;
+
+    private static final String TUR_ADI_SQL =
+            "SELECT ad FROM randevu_turu WHERE tur_kodu = ?";
+
+    private static final Map<Integer, String> GUN_ADLARI = Map.of(
+            1, "Pazartesi", 2, "Salı", 3, "Çarşamba", 4, "Perşembe",
+            5, "Cuma", 6, "Cumartesi", 7, "Pazar");
 
     public SlotHandler(Veritabani db, BotTokeni token) {
         super(db, token);
@@ -144,11 +211,12 @@ public final class SlotHandler extends BotHandler {
         LocalDate tarih = zorunluTarih(p, "tarih");
         String aracVin = bosIseNull(p.get("arac_vin"));
 
-        if (tarih.isBefore(LocalDate.now())) {
+        LocalDate bugun = LocalDate.now(BOLGE);
+        if (tarih.isBefore(bugun)) {
             throw ApiHatasi.goster("GECMIS_TARIH",
-                    "Geçmiş bir tarih için randevu oluşturulamaz.", 400, null);
+                    "Geçmiş bir tarih için randevu alınamaz.", 400, null);
         }
-        if (tarih.isAfter(LocalDate.now().plusDays(AZAMI_GUN))) {
+        if (tarih.isAfter(bugun.plusDays(AZAMI_GUN))) {
             throw ApiHatasi.goster("COK_UZAK_TARIH",
                     "En fazla " + AZAMI_GUN + " gün sonrası için randevu alınabilir.", 400, null);
         }
@@ -196,11 +264,18 @@ public final class SlotHandler extends BotHandler {
     }
 
     /**
-     * VIN verildiyse: test sürüşü/teslimatta araç o şubede STOKTA olmalı;
-     * servisten teslimde o aracın açık bir servis kaydı olmalı. Servis girişi
-     * ve bakımda araç müşteride olduğundan bu kontrol yapılmaz.
+     * VIN verildiyse aracın bu randevu için uygun olduğunu doğrular.
+     *
+     * <ul>
+     *   <li>Test sürüşü: şubede STOKTA</li>
+     *   <li>Yeni araç teslimi: müşterinin kendi satılmış aracı, o şubede</li>
+     *   <li>Servisten teslim: açık ve teslime hazır servis kaydı, o şubede</li>
+     *   <li>Periyodik bakım / servise giriş: müşterinin kendi aracı</li>
+     *   <li>Araç inceleme / satın alım: araç istemez; VIN verilmesi 400</li>
+     * </ul>
      */
-    private void aracUygunMu(Connection conn, int subeId, String turKodu, String vin) throws Exception {
+    private void aracUygunMu(Connection conn, int subeId, String turKodu, String vin)
+            throws Exception {
         if (turKodu.equals("SERVIS_TESLIM")) {
             // v_musteri_servis_durumu: yalnızca konuşulan müşterinin kayıtları
             // (oturum değişkeni ile süzülür), masraf ve çalışan bilgisi yok.
@@ -240,21 +315,63 @@ public final class SlotHandler extends BotHandler {
             return;
         }
 
-        if (!turKodu.equals("TEST_SURUSU") && !turKodu.equals("TESLIMAT")) {
-            return; // servis türlerinde araç müşteridedir; stok kontrolü anlamsız
-        }
-
-        try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT durum FROM arac WHERE vin = ? AND sube_id = ?")) {
-            ps.setString(1, vin);
-            ps.setInt(2, subeId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next() || !"STOKTA".equals(rs.getString("durum"))) {
-                    throw ApiHatasi.goster("ARAC_STOKTA_YOK",
-                            "Bu araç şu anda bu şubede stokta bulunmuyor.", 404, null);
+        if (turKodu.equals("TEST_SURUSU")) {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT durum FROM arac WHERE vin = ? AND sube_id = ?")) {
+                ps.setString(1, vin);
+                ps.setInt(2, subeId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next() || !"STOKTA".equals(rs.getString("durum"))) {
+                        throw ApiHatasi.goster("ARAC_STOKTA_YOK",
+                                "Bu araç şu anda bu şubede stokta bulunmuyor.", 404, null);
+                    }
                 }
             }
+            return;
         }
+
+        if (turKodu.equals("TESLIMAT")) {
+            // Teslim edilen araç müşterinin kendi satılmış aracı ve o şubede olmalı.
+            try (PreparedStatement ps = conn.prepareStatement("""
+                    SELECT 1 FROM arac
+                     WHERE vin = ? AND sube_id = ?
+                       AND durum = 'SATILDI'
+                       AND musteri_id = fn_aktif_musteri_id()
+                    """)) {
+                ps.setString(1, vin);
+                ps.setInt(2, subeId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) {
+                        throw ApiHatasi.goster("ARAC_STOKTA_YOK",
+                                "Bu araç bu şubede teslim edilebilir durumda değil.", 404, null);
+                    }
+                }
+            }
+            return;
+        }
+
+        if (turKodu.equals("PERIYODIK_BAKIM") || turKodu.equals("SERVIS_GIRIS")) {
+            // Araç müşterinin kendi aracı olmalı; şube serbest (ağ içi servis).
+            try (PreparedStatement ps = conn.prepareStatement("""
+                    SELECT 1 FROM arac
+                     WHERE vin = ? AND durum = 'SATILDI'
+                       AND musteri_id = fn_aktif_musteri_id()
+                    """)) {
+                ps.setString(1, vin);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) {
+                        throw ApiHatasi.goster("ARAC_YOK",
+                                "Bu araç müşterinin kayıtlı araçları arasında bulunmuyor.",
+                                404, null);
+                    }
+                }
+            }
+            return;
+        }
+
+        // Araç inceleme ve satın alım araç istemez.
+        throw ApiHatasi.goster("GECERSIZ_PARAMETRE",
+                "Bu randevu türünde arac_vin kullanılamaz.", 400, null);
     }
 
     // --- sorgular -----------------------------------------------------------
@@ -264,18 +381,23 @@ public final class SlotHandler extends BotHandler {
             throws Exception {
         List<Map<String, Object>> slotlar = new ArrayList<>();
         try (PreparedStatement ps = conn.prepareStatement(SLOT_SQL)) {
-            ps.setString(1, tarih.toString());
-            ps.setString(2, tarih.toString());
-            ps.setString(3, turKodu);
-            ps.setString(4, tarih.toString());
-            ps.setString(5, turKodu);
-            ps.setInt(6, subeId);
-            ps.setInt(7, subeId);
-            ps.setInt(8, subeId);   // SERVIS_TESLIM dalı: kaydın şubesi
-            ps.setString(9, aracVin);
-            ps.setString(10, aracVin);
-            ps.setString(11, aracVin);
-            ps.setString(12, aracVin);
+            String t = tarih.toString();
+            int i = 1;
+            ps.setString(i++, t);            // olası: başlangıç
+            ps.setString(i++, t);            // olası: bitiş
+            ps.setString(i++, turKodu);      // olası: tür
+            ps.setString(i++, t);            // olası: isodow
+            ps.setString(i++, turKodu);      // tur: tür kuralları
+            ps.setInt(i++, subeId);          // uygun çalışan: şube
+            ps.setString(i++, t);            // yetkinlik: veriliş <= gün
+            ps.setString(i++, t);            // yetkinlik: bitiş >= gün
+            ps.setInt(i++, subeId);          // test sürüşü aracı: şube
+            ps.setInt(i++, subeId);          // teslimat aracı: şube
+            ps.setInt(i++, subeId);          // servisten teslim: kaydın şubesi
+            ps.setString(i++, aracVin);      // araç filtresi (agg)
+            ps.setString(i++, aracVin);
+            ps.setString(i++, aracVin);      // araç filtresi (where)
+            ps.setString(i++, aracVin);
 
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -292,24 +414,64 @@ public final class SlotHandler extends BotHandler {
         return slotlar;
     }
 
-    /** Türün tanımlı saat aralıklarını tek satırlık açıklamaya çevirir (LLM için). */
+    /**
+     * Türün adını ve tanımlı saat aralıklarını LLM'in doğrudan kullanabileceği
+     * tek satıra çevirir. Gün kapsamı her zaman yazılır: tür yalnız Cumartesi
+     * tanımlıysa "her gün açık" sanılmamalı.
+     */
     private String turBilgisi(Connection conn, String turKodu) throws Exception {
-        StringBuilder sb = new StringBuilder();
+        String turAdi = turKodu;
+        try (PreparedStatement ps = conn.prepareStatement(TUR_ADI_SQL)) {
+            ps.setString(1, turKodu);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) turAdi = rs.getString("ad");
+            }
+        }
+
+        Map<Integer, String> guneGore = new TreeMap<>();
         try (PreparedStatement ps = conn.prepareStatement(TUR_SAATLERI_SQL)) {
             ps.setString(1, turKodu);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    if (sb.length() > 0) sb.append(", ");
-                    sb.append(kisaSaat(rs.getString("baslangic")))
-                      .append("-")
-                      .append(kisaSaat(rs.getString("bitis")));
+                    int gun = rs.getInt("gun");
+                    String aralik = kisaSaat(rs.getString("baslangic"))
+                            + "-" + kisaSaat(rs.getString("bitis"));
+                    guneGore.merge(gun, aralik, (a, b) -> a + ", " + b);
                 }
             }
         }
-        if (sb.length() == 0) {
-            return "Bu randevu türü için tanımlı saat aralığı yok.";
+
+        if (guneGore.isEmpty()) {
+            return turAdi + " için tanımlı saat aralığı yok.";
         }
-        return "Saat aralıkları: " + sb;
+
+        List<Integer> gunler = new ArrayList<>(guneGore.keySet());
+        String ilk = guneGore.values().iterator().next();
+        boolean ayniPencere = guneGore.values().stream().allMatch(ilk::equals);
+        boolean ardisik = true;
+        for (int k = 1; k < gunler.size(); k++) {
+            if (gunler.get(k) != gunler.get(k - 1) + 1) {
+                ardisik = false;
+                break;
+            }
+        }
+
+        if (ayniPencere && ardisik) {
+            String kapsam = gunler.size() == 1
+                    ? GUN_ADLARI.get(gunler.get(0))
+                    : GUN_ADLARI.get(gunler.get(0)) + "-"
+                      + GUN_ADLARI.get(gunler.get(gunler.size() - 1));
+            return turAdi + ": " + kapsam + " " + ilk;
+        }
+
+        StringBuilder sb = new StringBuilder(turAdi).append(": ");
+        boolean ilkGun = true;
+        for (Map.Entry<Integer, String> e : guneGore.entrySet()) {
+            if (!ilkGun) sb.append("; ");
+            sb.append(GUN_ADLARI.getOrDefault(e.getKey(), "?")).append(" ").append(e.getValue());
+            ilkGun = false;
+        }
+        return sb.toString();
     }
 
     /** {@code 10:00:00} -> {@code 10:00} */
@@ -363,7 +525,11 @@ public final class SlotHandler extends BotHandler {
         }
     }
 
+    /**
+     * VIN'ler veritabanında büyük harftir; köprüden küçük harf gelirse sessizce
+     * "araç yok" demek yerine normalize edilir.
+     */
     private static String bosIseNull(String s) {
-        return (s == null || s.isBlank()) ? null : s.trim();
+        return (s == null || s.isBlank()) ? null : s.trim().toUpperCase(Locale.ROOT);
     }
 }
