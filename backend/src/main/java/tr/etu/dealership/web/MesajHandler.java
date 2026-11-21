@@ -188,7 +188,9 @@ public final class MesajHandler extends BotHandler {
                             "name", cagri.ad(),
                             "response", aracYaniti(govde))));
                 }
-                icerik.add(Map.of("role", "function", "parts", fnParcalari));
+                // Araç sonuçları "user" turunda gönderilir: Gemma yalnız
+                // user/model rollerini kabul ediyor (role:"function" 400 verir).
+                icerik.add(Map.of("role", "user", "parts", fnParcalari));
             }
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) {

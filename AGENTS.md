@@ -51,6 +51,11 @@ session'lara ve ekip arkadaşına bağlam aktarımı içindir.
   HTTP uçlarına `KENDI_URL` üzerinden çağrılır. `GEMINI_API_KEY` yoksa yalnız bu uç 503
   döner. Sistem promptu `backend/src/main/resources/sistem-promptu.md`.
   Idempotency `mesaj.kaynak_id` (`db/450`) ile; köprü wamid göndermeli.
+  **Demo modeli: `gemma-4-26b-a4b-it`** (`GEMINI_MODEL` ile değişir). Gemini 3.5
+  Flash Lite yoğun saatlerde 503 veriyor; Gemma 4 26B function calling destekliyor.
+  İstemci 429/5xx'te iki kez yeniden dener. Gemma yalnız `user`/`model` rollerini
+  kabul eder (araç sonuçları `user` turunda) ve `thought` parçaları müşteriye
+  gönderilmez.
 - **`musteri.ad/soyad` artık NULL olabilir** (`db/440_musteri_bilgisi.sql`):
   kimlik telefondur, isim sonradan öğrenilir. Bu dosya ayrıca bot'a
   `UPDATE (ad, soyad)` yetkisi ve RLS UPDATE politikası ekler. `v_rapor_randevu`

@@ -102,11 +102,28 @@ public final class GeminiIstemci {
                         MAPPER.writeValueAsString(govde), StandardCharsets.UTF_8))
                 .build();
 
-        HttpResponse<String> yanit = http.send(istek,
-                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        if (yanit.statusCode() != 200) {
-            throw new IOException("Gemini HTTP " + yanit.statusCode() + ": "
-                    + kirp(yanit.body(), 300));
+        // 429/5xx geçici olabilir ("high demand" dalgaları). Kısa backoff ile
+        // iki kez daha dene; kalıcıysa çağıran 503 LLM_UNAVAILABLE üretir.
+        HttpResponse<String> yanit = null;
+        for (int deneme = 0; deneme < 3; deneme++) {
+            yanit = http.send(istek, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            int kod = yanit.statusCode();
+            if (kod == 200) break;
+            if (kod != 429 && kod < 500) {
+                throw new IOException("Gemini HTTP " + kod + ": " + kirp(yanit.body(), 300));
+            }
+            if (deneme < 2) {
+                try {
+                    Thread.sleep(400L * (deneme + 1));
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw ie;
+                }
+            }
+        }
+        if (yanit == null || yanit.statusCode() != 200) {
+            throw new IOException("Gemini HTTP " + (yanit == null ? "?" : yanit.statusCode())
+                    + ": " + kirp(yanit == null ? "" : yanit.body(), 300));
         }
 
         JsonNode kok = MAPPER.readTree(yanit.body());
@@ -123,7 +140,9 @@ public final class GeminiIstemci {
         StringBuilder metin = new StringBuilder();
         List<Cagri> cagrilar = new ArrayList<>();
         for (JsonNode parca : aday.path("parts")) {
-            if (parca.hasNonNull("text")) {
+            // "thought" parçaları modelin iç muhakemesidir; müşteriye gitmez.
+            // (Gemma 4 ve Gemini "thinking" modelleri bu parçayı döndürür.)
+            if (parca.hasNonNull("text") && !parca.path("thought").asBoolean(false)) {
                 metin.append(parca.get("text").asText());
             }
             JsonNode fc = parca.get("functionCall");
