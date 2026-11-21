@@ -76,6 +76,12 @@ public abstract class BotHandler implements HttpHandler {
                 return;
             }
 
+            // Gövde, bağlantı havuzundan bağlantı alınmadan önce okunur: yavaş
+            // yükleyen bir istemci havuzdaki bağlantıyı meşgul etmesin.
+            byte[] hamGovde = "POST".equals(ex.getRequestMethod())
+                    ? ex.getRequestBody().readNBytes(AZAMI_GOVDE + 1)
+                    : null;
+
             try (Connection conn = db.baglanti()) {
                 try {
                     try {
@@ -88,7 +94,7 @@ public abstract class BotHandler implements HttpHandler {
                                         "Müşteri kimliği geçersiz.", true, null));
                         return;
                     }
-                    Object veri = isle(ex, conn);
+                    Object veri = isle(ex, conn, hamGovde);
                     if (veri == null) {
                         // Sözleşme her endpoint için gövde öngörür; null dönen bir
                         // handler protokol ihlalidir. Commit'ten ÖNCE fırlatılır ki
@@ -97,7 +103,7 @@ public abstract class BotHandler implements HttpHandler {
                                 + ex.getRequestURI().getPath());
                     }
                     conn.commit();
-                    JsonYanit.yaz(ex, 200, JsonYanit.basarili(veri));
+                    JsonYanit.yaz(ex, basariliDurum(), JsonYanit.basarili(veri));
                 } catch (ApiHatasi e) {
                     conn.rollback();
                     JsonYanit.yaz(ex, e.httpDurum(),
@@ -128,11 +134,98 @@ public abstract class BotHandler implements HttpHandler {
      * İş mantığı. Dönen değer {@code {ok:true, veri:<değer>}} zarfına konur;
      * {@code null} dönerse yalnızca commit yapılır, gövde yazılmaz.
      */
-    protected abstract Object isle(HttpExchange ex, Connection conn) throws Exception;
+    protected Object isle(HttpExchange ex, Connection conn) throws Exception {
+        throw new IllegalStateException("Handler işleme biçimini tanımlamadı: "
+                + getClass().getSimpleName());
+    }
+
+    /**
+     * Gövdeyi önceden okunmuş haliyle alan sürüm. POST uçları bunu ezer;
+     * GET uçları varsayılanı kullanır.
+     */
+    protected Object isle(HttpExchange ex, Connection conn, byte[] hamGovde) throws Exception {
+        return isle(ex, conn);
+    }
 
     /** Bu endpoint'in kabul ettiği HTTP yöntemi. Sözleşmede GET/POST olarak sabittir. */
     protected String beklenenYontem() {
         return "GET";
+    }
+
+    /** Başarılı yanıtın HTTP durumu. Kaynak oluşturan uçlar 201 döner. */
+    protected int basariliDurum() {
+        return 200;
+    }
+
+    /** JSON gövde üst sınırı: bot mesajları küçüktür, büyük gövde reddedilir. */
+    private static final int AZAMI_GOVDE = 64 * 1024;
+
+    /**
+     * POST gövdesini JSON nesnesi olarak okur. Gövde yoksa, çok büyükse veya
+     * geçerli bir JSON nesnesi değilse {@code 400 GECERSIZ_PARAMETRE} döner.
+     */
+    @SuppressWarnings("unchecked")
+    protected static Map<String, Object> govde(byte[] ham) {
+        if (ham == null || ham.length == 0) {
+            throw ApiHatasi.goster("GECERSIZ_PARAMETRE", "İstek gövdesi boş.", 400, null);
+        }
+        if (ham.length > AZAMI_GOVDE) {
+            throw ApiHatasi.goster("GECERSIZ_PARAMETRE", "İstek gövdesi çok büyük.", 400, null);
+        }
+        Object cozulen;
+        try {
+            cozulen = JsonYanit.mapper().readValue(ham, Object.class);
+        } catch (IOException e) {
+            throw ApiHatasi.goster("GECERSIZ_PARAMETRE",
+                    "İstek gövdesi geçerli JSON değil.", 400, null);
+        }
+        if (!(cozulen instanceof Map)) {
+            throw ApiHatasi.goster("GECERSIZ_PARAMETRE",
+                    "İstek gövdesi bir JSON nesnesi olmalı.", 400, null);
+        }
+        return (Map<String, Object>) cozulen;
+    }
+
+    /** JSON gövdeden metin alanı; boş string yok sayılır. */
+    protected static String metin(Map<String, Object> govde, String ad) {
+        Object v = govde.get(ad);
+        if (v == null) return null;
+        if (!(v instanceof String s)) {
+            throw ApiHatasi.goster("GECERSIZ_PARAMETRE", ad + " metin olmalı.", 400, null);
+        }
+        return s.isBlank() ? null : s.trim();
+    }
+
+    /** JSON gövdeden metin alanı; kolon genişliğini aşarsa 400 (DB hatası 500 olmasın). */
+    protected static String metinEnFazla(Map<String, Object> govde, String ad, int enFazla) {
+        String v = metin(govde, ad);
+        if (v != null && v.length() > enFazla) {
+            throw ApiHatasi.goster("GECERSIZ_PARAMETRE",
+                    ad + " en fazla " + enFazla + " karakter olabilir.", 400, null);
+        }
+        return v;
+    }
+
+    /** JSON gövdeden zorunlu metin alanı. */
+    protected static String zorunluMetin(Map<String, Object> govde, String ad) {
+        String v = metin(govde, ad);
+        if (v == null) {
+            throw ApiHatasi.goster("GECERSIZ_PARAMETRE", ad + " parametresi zorunlu.", 400, null);
+        }
+        return v;
+    }
+
+    /** JSON gövdeden zorunlu tam sayı alanı. */
+    protected static int zorunluSayi(Map<String, Object> govde, String ad) {
+        Object v = govde.get(ad);
+        if (v == null) {
+            throw ApiHatasi.goster("GECERSIZ_PARAMETRE", ad + " parametresi zorunlu.", 400, null);
+        }
+        if (v instanceof Integer i) return i;
+        if (v instanceof Number n && n.doubleValue() == Math.rint(n.doubleValue())) {
+            return n.intValue();
+        }
+        throw ApiHatasi.goster("GECERSIZ_PARAMETRE", ad + " tam sayı olmalı.", 400, null);
     }
 
     /**

@@ -7,6 +7,8 @@ import tr.edu.etu.dealership.config.Ayarlar;
 import tr.edu.etu.dealership.db.Veritabani;
 import tr.edu.etu.dealership.web.AracHandler;
 import tr.edu.etu.dealership.web.BotTokeni;
+import tr.edu.etu.dealership.web.MusteriHandler;
+import tr.edu.etu.dealership.web.RandevuHandler;
 import tr.edu.etu.dealership.web.HttpYardimci;
 import tr.edu.etu.dealership.web.SlotHandler;
 import tr.edu.etu.dealership.web.SubeHandler;
@@ -42,6 +44,8 @@ public final class Main {
         sunucu.createContext("/bot/sube", new SubeHandler(db, token));
         sunucu.createContext("/bot/slot", new SlotHandler(db, token));
         sunucu.createContext("/bot/arac", new AracHandler(db, token));
+        sunucu.createContext("/bot/musteri", new MusteriHandler(db, token));
+        sunucu.createContext("/bot/randevu", new RandevuHandler(db, token));
         sunucu.createContext("/saglik", HttpYardimci.saglik(db));
 
         sunucu.start();
