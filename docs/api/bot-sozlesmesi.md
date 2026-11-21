@@ -81,6 +81,19 @@ Her endpoint'te ayrıca dönebilen ortak kodlar:
 | `YETKISIZ_ISTEK` | 401 | `X-Bot-Token` eksik veya yanlış (istek köprüden gelmiyor) |
 | `KIMLIK_YOK` | 401 | `X-Musteri-Telefon` eksik veya E.164 biçiminde değil |
 | `YONTEM_DESTEKLENMIYOR` | 405 | Endpoint'in beklediği HTTP yöntemi dışında istek (`Allow` başlığı döner) |
+| `YOL_YOK` | 404 | Sözleşmede tanımlı olmayan yol (ör. `/bot/sube/ekstra`) |
+
+Query parametreleri bir kez gönderilir; aynı ad iki kez gelirse
+`400 GECERSIZ_PARAMETRE` döner (hangi değerin kullanıldığı belirsiz kalmasın).
+
+Endpoint yolları tam eşleşir; sondaki eğik çizgi kabul edilir (`/bot/sube/`),
+daha derin yollar reddedilir (`/bot/sube/ekstra` → `404 YOL_YOK`).
+
+### Sağlık kontrolü
+
+`GET /saglik` ve `HEAD /saglik` kimlik doğrulaması istemez (konteyner sağlık
+kontrolü içindir) ve yalnızca `ok` / `db erişilemiyor` döndürür. Diğer yöntemler
+`405`, tanımsız alt yollar `404` alır.
 
 ## Endpoint'ler
 
@@ -224,13 +237,23 @@ Bir şube, randevu türü ve gün için **müsait saat dilimlerini** ve her dili
 
 Bir saat dilimi ancak o türün gerektirdiği bütün kaynaklar hazırsa müsait sayılır:
 
-| Tür | Çalışan | Araç |
+| Tür | Çalışan | Araç (kaynak tüketir) |
 |---|---|---|
 | `TEST_SURUSU` | yetkinlik şartı var | o şubede `STOKTA` ve o saat boş |
-| `TESLIMAT` | departman: `SATIS` | teslim edilecek araç |
+| `TESLIMAT` | departman: `SATIS` | müşterinin **kendi** `SATILDI` aracı, o şubede |
+| `PERIYODIK_BAKIM`, `SERVIS_GIRIS` | departman: `SERVIS` | müşterinin **kendi** `SATILDI` aracı (şube serbest) |
+| `SERVIS_TESLIM` | departman: `SERVIS` | müşterinin açık ve **teslime hazır** servis kaydındaki araç |
 | `ARAC_INCELEME`, `SATIN_ALIM` | departman: `SATIS` | gerekmez |
-| `PERIYODIK_BAKIM`, `SERVIS_GIRIS` | departman: `SERVIS` | gerekmez (araç müşteride) |
-| `SERVIS_TESLIM` | departman: `SERVIS` | müşterinin açık servis kaydındaki araç (teslime hazır olmalı) |
+
+Araç gerektiren beş tür, **araç kaynağını tüketir**: aynı araç aynı anda iki
+randevuda olamaz (`randevu` tablosundaki EXCLUDE kısıtı). Bu yüzden slot
+hesabı aracın o saatte boş olmasını da arar; aksi halde önerilen saat
+kaydedilirken veritabanı reddederdi.
+
+**Yoldaki araçların sahibi yoktur** (`arac` tablosundaki
+`(durum = 'SATILDI') = (musteri_id IS NOT NULL)` kısıtı). Bu nedenle
+"müşterinin yoldaki aracı" diye bir kavram yoktur; teslimat yalnızca
+müşterinin satın aldığı araç için verilir.
 
 Sorgu bu nedenle **sol birleştirme** ile kurulur: araç gerektirmeyen türlerde araç
 tarafı boş kalır ve slot elenmez.
@@ -258,7 +281,7 @@ GET /bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=2026-11-20&arac_vin=VIN123456
 | `sube_id` | integer | ✅ | Şube kimliği |
 | `tur_kodu` | string | ✅ | `randevu_turu.tur_kodu` |
 | `tarih` | date | ✅ | `YYYY-MM-DD`; bugünden itibaren en fazla 21 gün ileri |
-| `arac_vin` | string | ❌ | Verilirse yalnızca o araç boş olan dilimler döner |
+| `arac_vin` | string | ❌ | Verilirse yalnızca o araç boş olan dilimler döner. Yalnızca araç gerektiren beş türde kullanılabilir; `ARAC_INCELEME`/`SATIN_ALIM` türlerinde 400 döner. Küçük harf kabul edilir, büyük harfe çevrilir |
 
 ### Başarılı yanıt — `200 OK`
 
@@ -268,7 +291,7 @@ GET /bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=2026-11-20&arac_vin=VIN123456
   "veri": {
     "tarih": "2026-11-20",
     "tur_kodu": "TEST_SURUSU",
-    "bilgi": "Test Sürüşü 10:00-12:00 ve 14:00-16:00 arasında yapılır.",
+    "bilgi": "Test Sürüşü: Pazartesi-Cumartesi 10:00-12:00, 14:00-16:00",
     "slotlar": [
       {
         "baslangic": "10:00",
@@ -305,7 +328,7 @@ Boş liste örneği:
   "veri": {
     "tarih": "2026-11-22",
     "tur_kodu": "TEST_SURUSU",
-    "bilgi": "Test Sürüşü 10:00-12:00 ve 14:00-16:00 arasında yapılır.",
+    "bilgi": "Test Sürüşü: Pazartesi-Cumartesi 10:00-12:00, 14:00-16:00",
     "slotlar": []
   }
 }
@@ -320,10 +343,11 @@ Boş liste örneği:
 | `GECERSIZ_TARIH` | 400 | true | Tarih `YYYY-MM-DD` biçiminde değil |
 | `GECMIS_TARIH` | 400 | true | Tarih bugünden önce |
 | `COK_UZAK_TARIH` | 400 | true | Bugünden 21 günden fazla ileri |
-| `ARAC_STOKTA_YOK` | 404 | true | `arac_vin` verildi; test sürüşü/teslimat için araç o şubede `STOKTA` değil |
+| `ARAC_YOK` | 404 | true | `arac_vin` verildi; bakım/servise girişte araç müşterinin kayıtlı araçları arasında değil |
+| `ARAC_STOKTA_YOK` | 404 | true | `arac_vin` verildi; test sürüşü için araç o şubede `STOKTA` değil, ya da teslimat için araç müşterinin kendi satılmış aracı değil |
 | `ARAC_SERVISTE_DEGIL` | 404 | true | `arac_vin` verildi; servisten teslim için açık servis kaydı yok |
 | `SERVIS_TESLIM_HAZIR_DEGIL` | 409 | true | Araç serviste ama teslime hazır değil; `detay` son durumu ve tahmini teslim tarihini taşır |
-| `GECERSIZ_PARAMETRE` | 400 | true | Parametreler birlikte kullanılamaz (`kapsam=benim` + `arac_vin`) |
+| `GECERSIZ_PARAMETRE` | 400 | true | Parametre kullanımı geçersiz: zorunlu parametre eksik/sayısal değil, `arac_vin` araç gerektirmeyen bir türde verilmiş, ya da `kapsam=benim` + `arac_vin` birlikte |
 
 **Not:** O gün o tür için hiç saat tanımlı değilse (hafta sonu, mesai dışı veya
 türün penceresi yok) bu bir hata değildir: `slotlar: []` ve açıklayıcı `bilgi`
@@ -352,7 +376,7 @@ Aşağıdaki sorgu doğrulanmıştır (bkz. `scripts/test-bot-http.sh`). Paramet
 `$1` tarih, `$2` tur_kodu, `$3` sube_id, `$4` arac_vin (NULL olabilir).
 
 ```sql
-WITH olası AS (
+WITH olası_ham AS (
     -- 1) O güne ait olası dilimler: tur_saat penceresi içinde süre kadar adım
     SELECT gs AS baslangic,
            gs + (rt.sure_dakika * interval '1 minute') AS bitis
@@ -368,41 +392,56 @@ WITH olası AS (
        AND extract(isodow FROM $1::date) = ts.gun
        AND m.acilis <= ts.baslangic AND ts.bitis <= m.kapanis
 ),
+olası AS (SELECT DISTINCT baslangic, bitis FROM olası_ham),  -- örtüşen pencereler
 tur AS (
     SELECT rt.tur_kodu, rt.yetkinlik_id, rt.departman,
-           rt.tur_kodu IN ('TEST_SURUSU','TESLIMAT','SERVIS_TESLIM') AS arac_gerekli
+           rt.tur_kodu IN ('TEST_SURUSU','TESLIMAT','SERVIS_TESLIM',
+                           'PERIYODIK_BAKIM','SERVIS_GIRIS') AS arac_gerekli
       FROM randevu_turu rt WHERE rt.tur_kodu = $2
 ),
 uygun_calisan AS (
-    -- Şubede, aktif, doğru departmanda, yetkinliği olan çalışanlar
+    -- Yetkinliğin randevu günü geçerli olması şart (trigger ile aynı kural)
     SELECT c.calisan_id
       FROM calisan c, tur t
      WHERE c.sube_id = $3 AND c.aktif_mi AND c.departman = t.departman
        AND (t.yetkinlik_id IS NULL OR EXISTS (
              SELECT 1 FROM calisan_yetkinlik cy
               WHERE cy.calisan_id = c.calisan_id
-                AND cy.yetkinlik_id = t.yetkinlik_id))
+                AND cy.yetkinlik_id = t.yetkinlik_id
+                AND cy.verilis_tarihi <= $1::date
+                AND (cy.bitis_tarihi IS NULL OR cy.bitis_tarihi >= $1::date)))
 ),
 uygun_arac AS (
-    -- Test sürüşü/teslimat: şubede stokta olan araçlar
+    -- Test sürüşü: şubede stokta
     SELECT a.vin, v.paket_adi, md.ad AS model, a.renk
-      FROM arac a
-      JOIN versiyon v ON v.versiyon_id = a.versiyon_id
-      JOIN model   md ON md.model_id   = v.model_id
-     WHERE a.sube_id = $3 AND a.durum = 'STOKTA'
-       AND (SELECT arac_gerekli FROM tur)
-       AND (SELECT tur_kodu FROM tur) <> 'SERVIS_TESLIM'
+      FROM arac a JOIN versiyon v ON v.versiyon_id = a.versiyon_id
+      JOIN model md ON md.model_id = v.model_id
+     WHERE (SELECT tur_kodu FROM tur) = 'TEST_SURUSU'
+       AND a.sube_id = $3 AND a.durum = 'STOKTA'
     UNION ALL
-    -- Servisten teslim: bu şubede açık ve TESLİME HAZIR kaydı olan araçlar
+    -- Yeni araç teslimi: müşterinin kendi satılmış aracı, o şubede
+    SELECT a.vin, v.paket_adi, md.ad AS model, a.renk
+      FROM arac a JOIN versiyon v ON v.versiyon_id = a.versiyon_id
+      JOIN model md ON md.model_id = v.model_id
+     WHERE (SELECT tur_kodu FROM tur) = 'TESLIMAT'
+       AND a.sube_id = $3 AND a.durum = 'SATILDI'
+       AND a.musteri_id = fn_aktif_musteri_id()
+    UNION ALL
+    -- Servisten teslim: bu şubede açık ve TESLİME HAZIR kayıt
     SELECT DISTINCT a.vin, v.paket_adi, md.ad AS model, a.renk
-      FROM arac a
-      JOIN versiyon v ON v.versiyon_id = a.versiyon_id
-      JOIN model   md ON md.model_id   = v.model_id
+      FROM arac a JOIN versiyon v ON v.versiyon_id = a.versiyon_id
+      JOIN model md ON md.model_id = v.model_id
       JOIN v_musteri_servis_durumu msd ON msd.arac_vin = a.vin
      WHERE (SELECT tur_kodu FROM tur) = 'SERVIS_TESLIM'
-       AND msd.kapandi_mi = false
-       AND msd.son_durum = 'TESLIME_HAZIR'
+       AND msd.kapandi_mi = false AND msd.son_durum = 'TESLIME_HAZIR'
        AND msd.sube_id = $3
+    UNION ALL
+    -- Bakım / servise giriş: müşterinin kendi aracı (şube serbest)
+    SELECT a.vin, v.paket_adi, md.ad AS model, a.renk
+      FROM arac a JOIN versiyon v ON v.versiyon_id = a.versiyon_id
+      JOIN model md ON md.model_id = v.model_id
+     WHERE (SELECT tur_kodu FROM tur) IN ('PERIYODIK_BAKIM','SERVIS_GIRIS')
+       AND a.durum = 'SATILDI' AND a.musteri_id = fn_aktif_musteri_id()
 )
 SELECT o.baslangic::time, o.bitis::time,
        (SELECT count(*) FROM uygun_calisan uc
@@ -411,7 +450,8 @@ SELECT o.baslangic::time, o.bitis::time,
                               AND tsrange(d.baslangic, d.bitis) && tsrange(o.baslangic, o.bitis))),
        CASE WHEN t.arac_gerekli THEN
          COALESCE((SELECT json_agg(json_build_object('vin', ua.vin, 'model', ua.model,
-                                                     'paket', ua.paket_adi, 'renk', ua.renk))
+                                                     'paket', ua.paket_adi, 'renk', ua.renk)
+                                            ORDER BY ua.vin)
                      FROM uygun_arac ua
                     WHERE ($4::varchar IS NULL OR ua.vin = $4)
                       AND NOT EXISTS (SELECT 1 FROM v_dolu_slot d

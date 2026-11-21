@@ -51,12 +51,17 @@ CREATE ROLE bot_app LOGIN PASSWORD 'BOTPW_PLACEHOLDER' IN ROLE bot;
 INSERT INTO sube (sehir, ad) VALUES
   ('Ankara', 'Çankaya'), ('Ankara', 'Yenimahalle'),
   ('İstanbul', 'Kadıköy'), ('İstanbul', 'Beşiktaş'), ('İstanbul', 'Ataşehir'),
-  ('İzmir', 'Bornova'), ('Bursa', 'Nilüfer'), ('Antalya', 'Muratpaşa');
+  ('İzmir', 'Bornova'), ('Bursa', 'Nilüfer'), ('Antalya', 'Muratpaşa'),
+  -- Sıralama kanıtı: COLLATE "C" (bayt sırası) Zonguldak'ı Çorum'dan önce
+  -- getirir; Türkçe collation tersini yapardı. Sıra sözleşmede sabittir.
+  ('Zonguldak', 'Merkez'), ('Çorum', 'Merkez');
 
 INSERT INTO mesai (gun, acilis, kapanis)
 SELECT g, '08:00'::time, '18:00'::time FROM generate_series(1, 6) g;
 
-INSERT INTO yetkinlik (kod, ad) VALUES ('TEST_SURUSU', 'Test Surusu Yetkisi');
+INSERT INTO yetkinlik (kod, ad) VALUES
+  ('TEST_SURUSU', 'Test Surusu Yetkisi'),
+  ('ILERI_TEST',  'Ileri Test Yetkisi');
 
 INSERT INTO randevu_turu (tur_kodu, ad, sure_dakika, departman, yetkinlik_id) VALUES
   ('TEST_SURUSU',     'Test Sürüşü',        60, 'SATIS',  1),
@@ -65,7 +70,9 @@ INSERT INTO randevu_turu (tur_kodu, ad, sure_dakika, departman, yetkinlik_id) VA
   ('SERVIS_GIRIS',    'Servise Giriş',      30, 'SERVIS', NULL),
   ('SERVIS_TESLIM',   'Servisten Teslim',   30, 'SERVIS', NULL),
   ('ARAC_INCELEME',   'Araç İnceleme',      60, 'SATIS',  NULL),
-  ('SATIN_ALIM',      'Satın Alım',         60, 'SATIS',  NULL);
+  ('SATIN_ALIM',      'Satın Alım',         60, 'SATIS',  NULL),
+  -- Yetkinlik sınır testi için izole tür: yalnızca ILERI_TEST (id 2) yetkinliği ister.
+  ('TEST_SURUSU2',    'İleri Test Sürüşü',  60, 'SATIS',  2);
 
 INSERT INTO tur_saat (tur_kodu, gun, baslangic, bitis)
 SELECT 'TEST_SURUSU', g, '10:00'::time, '12:00'::time FROM generate_series(1, 6) g
@@ -74,8 +81,12 @@ UNION ALL SELECT 'PERIYODIK_BAKIM', g, '09:00'::time, '17:00'::time FROM generat
 UNION ALL SELECT 'SERVIS_GIRIS', g, '09:00'::time, '17:00'::time FROM generate_series(1, 6) g
 UNION ALL SELECT 'SERVIS_TESLIM', g, '09:00'::time, '17:00'::time FROM generate_series(1, 6) g
 UNION ALL SELECT 'TESLIMAT', g, '14:00'::time, '16:00'::time FROM generate_series(1, 6) g
-UNION ALL SELECT 'ARAC_INCELEME', g, '09:00'::time, '17:00'::time FROM generate_series(1, 6) g
-UNION ALL SELECT 'SATIN_ALIM', g, '09:00'::time, '17:00'::time FROM generate_series(1, 6) g;
+-- Örtüşen pencereler: 09:00-11:00 ve 10:00-12:00 aynı 10:00 dilimini üretir;
+-- slot listesinde tekrarlanmamalı (olası CTE DISTINCT).
+UNION ALL SELECT 'ARAC_INCELEME', g, '09:00'::time, '11:00'::time FROM generate_series(1, 6) g
+UNION ALL SELECT 'ARAC_INCELEME', g, '10:00'::time, '12:00'::time FROM generate_series(1, 6) g
+UNION ALL SELECT 'SATIN_ALIM', g, '09:00'::time, '17:00'::time FROM generate_series(1, 6) g
+UNION ALL SELECT 'TEST_SURUSU2', g, '10:00'::time, '12:00'::time FROM generate_series(1, 6) g;
 
 INSERT INTO model (ad, garanti_yil, garanti_km) VALUES ('Ioniq 5', 3, 100000);
 INSERT INTO versiyon (model_id, paket_adi, model_yili, liste_fiyati) VALUES (1, 'Advance', 2024, 2000000);
@@ -111,10 +122,14 @@ SQL
 # Gelecekteki test gunu: mesai icinde bir Carsamba (Pazar'a denk gelirse ileri al)
 GUN=$(date -v+7d +%Y-%m-%d)
 [ "$(date -v+7d +%u)" -eq 7 ] && GUN=$(date -v+8d +%Y-%m-%d)
+# Ikinci calisma gunu (arac doluluk senaryolari icin; Pazar'a denk gelirse atla)
+GUN2=$(date -d "$GUN + 1 day" +%Y-%m-%d 2>/dev/null || date -j -v+1d -f "%Y-%m-%d" "$GUN" +%Y-%m-%d)
+[ "$(date -j -f "%Y-%m-%d" "$GUN2" +%u 2>/dev/null)" = "7" ] && \
+  GUN2=$(date -j -v+1d -f "%Y-%m-%d" "$GUN2" +%Y-%m-%d)
 
 echo "==> Dolu/musait senaryolari icin randevular ($GUN)..."
 docker exec -i "$CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
-  -v g="$GUN" << 'SQL2'
+  -v g="$GUN" -v g2="$GUN2" << 'SQL2'
 -- Sube 1'de uc saticidan 1'i (Ahmet) ve bir arac 10:00-11:00 dolu.
 -- 11:00-12:00'de uc saticinin hepsi dolu (musait calisan 0).
 -- 14:00-15:00'te uc aracin hepsi dolu (musait arac 0).
@@ -197,6 +212,43 @@ SELECT randevu_id, 5, 'ARIZA', 60000 FROM randevu WHERE arac_vin = 'VIN000000000
 INSERT INTO servis_durum_gecmisi (servis_kaydi_id, durum)
 SELECT sk.servis_kaydi_id, 'TESLIME_HAZIR' FROM servis_kaydi sk
   JOIN randevu r ON r.randevu_id = sk.acilis_randevu_id WHERE r.arac_vin = 'VIN00000000000024';
+
+-- Yoldaki araclar: biri varmis (varis gecmis), biri yolda (varis gelecek).
+-- TESLIMAT randevusu yalnizca varisi gelmis arac icin verilebilir (trigger kurali).
+INSERT INTO arac (vin, versiyon_id, sube_id, renk, durum, tahmini_varis_tarihi) VALUES
+  ('VIN00000000000031', 1, 1, 'Lacivert', 'YOLDA', current_date - 1),
+  ('VIN00000000000032', 1, 1, 'Turuncu',  'YOLDA', current_date + 10);
+
+-- Ikinci arac sahibi musteri (sahiplik izolasyonu testi). Tek araci var.
+INSERT INTO musteri (ad, soyad, telefon) VALUES ('Kerem', 'Oz', '+905550001188');
+INSERT INTO arac (vin, versiyon_id, sube_id, renk, plaka, durum, musteri_id) VALUES
+  ('VIN00000000000041', 1, 1, 'Beyaz', '06KK01', 'SATILDI',
+   (SELECT musteri_id FROM musteri WHERE telefon = '+905550001188'));
+-- Ikinci gunde bu araci 14:00-15:00 arasi doldur: TESLIMAT ve BAKIM slotlarinda
+-- 14:00 gorunmemeli (arac kaynagi mesgul), 15:00 gorunmeli.
+INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak)
+VALUES ((SELECT musteri_id FROM musteri WHERE telefon = '+905550001188'), 1, 'TESLIMAT', 1,
+        'VIN00000000000041', :'g2'::date + time '14:00', :'g2'::date + time '15:00',
+        'PLANLANDI', 'PANEL');
+
+-- Yetkinligi suresi dolmus ve henuz baslamamis saticilar: slot sayimina girmemeli
+INSERT INTO calisan (sube_id, ad, soyad, departman, eposta, kullanici_adi, sifre_hash, ise_giris_tarihi) VALUES
+  (1, 'Eski',  'Satici', 'SATIS', 'e@x', 'e.s', 'h', '2019-01-01'),
+  (1, 'Yeni',  'Satici', 'SATIS', 'y@x', 'y.s', 'h', '2026-01-01');
+-- Sinir gunleri: bitis_tarihi = randevu gunu ve verilis_tarihi = randevu gunu
+-- DAHIL kabul edilmeli (trigger ile ayni kural). Bu ikisi gecerlidir.
+INSERT INTO calisan (sube_id, ad, soyad, departman, eposta, kullanici_adi, sifre_hash, ise_giris_tarihi) VALUES
+  (1, 'Bitis',     'Sinir', 'SATIS', 'bs@x', 'bitis.s', 'h', '2020-01-01'),
+  (1, 'Baslangic', 'Sinir', 'SATIS', 'ba@x', 'baslangic.s', 'h', '2026-01-01');
+INSERT INTO calisan_yetkinlik (calisan_id, yetkinlik_id, verilis_tarihi, bitis_tarihi)
+SELECT calisan_id, 2, '2020-01-01', :'g'::date FROM calisan WHERE kullanici_adi = 'bitis.s';
+INSERT INTO calisan_yetkinlik (calisan_id, yetkinlik_id, verilis_tarihi, bitis_tarihi)
+SELECT calisan_id, 2, :'g'::date, NULL FROM calisan WHERE kullanici_adi = 'baslangic.s';
+
+-- Suresi dolmus ve henuz baslamamis: sayima girmemeli
+INSERT INTO calisan_yetkinlik (calisan_id, yetkinlik_id, verilis_tarihi, bitis_tarihi) VALUES
+  ((SELECT calisan_id FROM calisan WHERE kullanici_adi = 'e.s'), 2, '2020-01-01', '2020-12-31'),
+  ((SELECT calisan_id FROM calisan WHERE kullanici_adi = 'y.s'), 2, current_date + 60, NULL);
 SQL2
 
 docker exec -i "$CONTAINER" psql -U postgres -d postgres -q \
@@ -246,7 +298,8 @@ bekle() {
 }
 
 echo "--- GET /bot/sube ---"
-bekle "Tüm şehirler listelenir" 200 '"sehirler":["Ankara","Antalya","Bursa","İstanbul","İzmir"]' \
+bekle "Tüm şehirler listelenir ve bayt sırasıyla sıralanır (COLLATE C)" 200 \
+  '"sehirler":["Ankara","Antalya","Bursa","Zonguldak","Çorum","İstanbul","İzmir"]' \
   -H "$TOK" -H "$TEL" "$TABAN/bot/sube"
 bekle "Ankara iki şube döner" 200 '"sehir":"Ankara","subeler":[{"sube_id":2,"ad":"Yenimahalle"},{"sube_id":1,"ad":"Çankaya"}]' \
   -H "$TOK" -H "$TEL" "$TABAN/bot/sube?sehir=Ankara"
@@ -256,11 +309,17 @@ bekle "Yanlış yazım (ankara) 404" 404 '"kod":"SEHIRDE_SUBE_YOK"' \
   -H "$TOK" -H "$TEL" "$TABAN/bot/sube?sehir=ankara"
 
 echo "--- GET /bot/slot ---"
+TEL_S='X-Musteri-Telefon: +905550001177'
+TEL_B='X-Musteri-Telefon: +905550001122'
 bekle "Test sürüşü slotları ve imkanlar" 200 '"musait_calisan_sayisi":3' \
   -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN"
-bekle "Bilgi alanı saat aralığını taşır" 200 'Saat aralıkları: 10:00-12:00, 14:00-16:00' \
+bekle "Bilgi alanı tür adını, gün kapsamını ve saat aralığını taşır" 200 'Test Sürüşü: Pazartesi-Cumartesi 10:00-12:00, 14:00-16:00' \
   -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN"
-bekle "Periyodik bakımda araç listesi boş" 200 '"musait_araclar":[]' \
+# Bakımda araç müşterinin kendisine aittir: müşteri kendi araçlarını görür.
+bekle "Periyodik bakımda müşterinin kendi araçları listelenir" 200 '"vin":"VIN00000000000022"' \
+  -H "$TOK" -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=PERIYODIK_BAKIM&tarih=$GUN"
+# Aracı olmayan müşteriye bakım slotu verilmez (araç kaynağı yok).
+bekle "Aracı olmayan müşteriye bakım slotu yok" 200 '"slotlar":[]' \
   -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=PERIYODIK_BAKIM&tarih=$GUN"
 
 echo "--- GET /bot/slot (doluluk senaryoları) ---"
@@ -324,8 +383,128 @@ bekle "Stokta olmayan VIN 404" 404 '"kod":"ARAC_STOKTA_YOK"' \
 bekle "Zorunlu parametre eksik 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
   -H "$TOK" -H "$TEL" "$TABAN/bot/slot?tur_kodu=TEST_SURUSU&tarih=$GUN"
 
+echo "--- GET /bot/slot (TESLIMAT) ---"
+bekle "Teslimat: musteri kendi satilmis aracini secer" 200 '"ok":true' \
+  -H "$TOK" -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=TESLIMAT&tarih=$GUN&arac_vin=VIN00000000000022"
+# Yoldaki aracın sahibi yoktur (db/110_arac.sql CHECK) -> teslimat için uygun değil.
+bekle "Teslimat: sahipsiz yoldaki arac reddedilir" 404 '"kod":"ARAC_STOKTA_YOK"' \
+  -H "$TOK" -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=TESLIMAT&tarih=$GUN&arac_vin=VIN00000000000031"
+# Gerçek ikinci müşteri (aracı yok) başka müşterinin aracını seçemez.
+bekle "Teslimat: baska musterinin satilmis araci reddedilir" 404 '"kod":"ARAC_STOKTA_YOK"' \
+  -H "$TOK" -H "$TEL_B" "$TABAN/bot/slot?sube_id=1&tur_kodu=TESLIMAT&tarih=$GUN&arac_vin=VIN00000000000022"
+# Arac_vin verilmeden: yalniz kendi satilmis araclari listelenir, yoldakiler yok.
+YANIT_T=$(curl -s -H "$TOK" -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=TESLIMAT&tarih=$GUN")
+if printf '%s' "$YANIT_T" | grep -qF 'VIN00000000000022' \
+   && ! printf '%s' "$YANIT_T" | grep -qF 'VIN00000000000031'; then
+  echo "[PASS] Teslimat listesi yalniz kendi satilmis aracini icerir"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Teslimat listesi yanlis araclari iceriyor"; echo "       $YANIT_T"; KALAN=$((KALAN + 1))
+fi
+# Baska musterinin listesi kendi aracini gormez
+YANIT_B=$(curl -s -H "$TOK" -H "$TEL_B" "$TABAN/bot/slot?sube_id=1&tur_kodu=TESLIMAT&tarih=$GUN")
+if printf '%s' "$YANIT_B" | grep -qF 'VIN00000000000022'; then
+  echo "[FAIL] Baska musterinin teslimat listesinde VIN22 gorunuyor"; KALAN=$((KALAN + 1))
+else
+  echo "[PASS] Baska musterinin teslimat listesinde VIN22 gorunmuyor"; GECEN=$((GECEN + 1))
+fi
+
+echo "--- Sahiplik izolasyonu (iki arac sahibi musteri) ---"
+TEL_K='X-Musteri-Telefon: +905550001188'
+
+YANIT_K=$(curl -s -w '\n%{http_code}' -H "$TOK" -H "$TEL_K" "$TABAN/bot/slot?sube_id=1&tur_kodu=TESLIMAT&tarih=$GUN")
+KOD_K=$(printf '%s' "$YANIT_K" | tail -n1)
+GOV_K=$(printf '%s' "$YANIT_K" | sed '$d')
+if [ "$KOD_K" = "200" ] \
+   && printf '%s' "$GOV_K" | grep -qF 'VIN00000000000041' \
+   && ! printf '%s' "$GOV_K" | grep -qF 'VIN00000000000022'; then
+  echo "[PASS] Kerem yalniz kendi satilmis aracini gorur"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Kerem'in listesi yanlis"; echo "       HTTP $KOD_K $GOV_K"; KALAN=$((KALAN + 1))
+fi
+
+YANIT_S=$(curl -s -w '\n%{http_code}' -H "$TOK" -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=TESLIMAT&tarih=$GUN")
+KOD_S=$(printf '%s' "$YANIT_S" | tail -n1)
+GOV_S=$(printf '%s' "$YANIT_S" | sed '$d')
+if [ "$KOD_S" = "200" ] \
+   && printf '%s' "$GOV_S" | grep -qF 'VIN00000000000022' \
+   && ! printf '%s' "$GOV_S" | grep -qF 'VIN00000000000041' \
+   && ! printf '%s' "$GOV_S" | grep -qF 'VIN00000000000024'; then
+  echo "[PASS] Selin yalniz kendi araclarini gorur (baska musteri ve baska sube haric)"
+  GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Selin'in listesi yanlis"; echo "       HTTP $KOD_S $GOV_S"; KALAN=$((KALAN + 1))
+fi
+
+echo "--- Arac kaynagi mesgulse slot verilmez ---"
+# Kerem'in tek araci GUN2 14:00-15:00 dolu -> 14:00 slotu elenir, 15:00 kalir.
+YANIT_D=$(curl -s -H "$TOK" -H "$TEL_K" "$TABAN/bot/slot?sube_id=1&tur_kodu=TESLIMAT&tarih=$GUN2")
+if printf '%s' "$YANIT_D" | grep -qF '"baslangic":"14:00"'; then
+  echo "[FAIL] TESLIMAT: dolu araca ragmen 14:00 slotu dondu"; KALAN=$((KALAN + 1))
+else
+  echo "[PASS] TESLIMAT: araç dolu ise slot elenir (14:00 yok)"; GECEN=$((GECEN + 1))
+fi
+YANIT_D2=$(curl -s -H "$TOK" -H "$TEL_K" "$TABAN/bot/slot?sube_id=1&tur_kodu=TESLIMAT&tarih=$GUN2&arac_vin=VIN00000000000041")
+if printf '%s' "$YANIT_D2" | grep -qF '"baslangic":"14:00"'; then
+  echo "[FAIL] TESLIMAT (VIN filtreli): dolu araca ragmen 14:00 dondu"; KALAN=$((KALAN + 1))
+else
+  echo "[PASS] TESLIMAT (VIN filtreli): dolu arac 14:00'te donmez"; GECEN=$((GECEN + 1))
+fi
+YANIT_B2=$(curl -s -H "$TOK" -H "$TEL_K" "$TABAN/bot/slot?sube_id=1&tur_kodu=PERIYODIK_BAKIM&tarih=$GUN2&arac_vin=VIN00000000000041")
+if printf '%s' "$YANIT_B2" | grep -qF '"baslangic":"14:00"'; then
+  echo "[FAIL] BAKIM: dolu araca ragmen 14:00 dondu"; KALAN=$((KALAN + 1))
+else
+  echo "[PASS] BAKIM: araç dolu ise slot elenir (14:00 yok)"; GECEN=$((GECEN + 1))
+fi
+
+echo "--- Tur -> arac kurali (yedi tur) ---"
+bekle "SERVIS_GIRIS: kendi araci kabul edilir" 200 '"ok":true' \
+  -H "$TOK" -H "$TEL_K" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_GIRIS&tarih=$GUN&arac_vin=VIN00000000000041"
+bekle "SERVIS_GIRIS: baskasinin araci reddedilir" 404 '"kod":"ARAC_YOK"' \
+  -H "$TOK" -H "$TEL_K" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_GIRIS&tarih=$GUN&arac_vin=VIN00000000000022"
+# Bakimda sube serbest: Kerem'in araci sube 1'de kayitli, sube 1'de bakim -> kabul.
+bekle "BAKIM: sube serbest (kendi aracin, ayni sube)" 200 '"ok":true' \
+  -H "$TOK" -H "$TEL_K" "$TABAN/bot/slot?sube_id=1&tur_kodu=PERIYODIK_BAKIM&tarih=$GUN&arac_vin=VIN00000000000041"
+bekle "SATIN_ALIM: arac_vin kullanilamaz -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -H "$TOK" -H "$TEL_K" "$TABAN/bot/slot?sube_id=1&tur_kodu=SATIN_ALIM&tarih=$GUN&arac_vin=VIN00000000000041"
+bekle "ARAC_INCELEME: arac_vin kullanilamaz -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -H "$TOK" -H "$TEL_K" "$TABAN/bot/slot?sube_id=1&tur_kodu=ARAC_INCELEME&tarih=$GUN&arac_vin=VIN00000000000041"
+
+echo "--- Yetkinlik gecerliligi ---"
+# Izole tur (ILERI_TEST yetkinligi): yalnizca iki sinir calisani gecerli.
+# Bitis_tarihi = gun ve verilis_tarihi = gun DAHIL; suresi dolmus (2020) ve
+# henuz baslamamis (+60 gun) sayima girmez. Beklenen: 2 (girselerdi 4 olurdu).
+bekle "Yetkinlik gecerliligi: sinir gunleri dahil, suresi dolmus/baslamamis haric" 200 \
+  '"baslangic":"10:00","bitis":"11:00","musait_calisan_sayisi":2' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU2&tarih=$GUN"
+
+echo "--- Parametre tutarliligi ---"
+bekle "Bakimda kendi aracinin VIN'i kabul edilir" 200 '"ok":true' \
+  -H "$TOK" -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=PERIYODIK_BAKIM&tarih=$GUN&arac_vin=VIN00000000000022"
+bekle "Bakimda baskasinin/bilinmeyen aracin VIN'i reddedilir" 404 '"kod":"ARAC_YOK"' \
+  -H "$TOK" -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=PERIYODIK_BAKIM&tarih=$GUN&arac_vin=VIN00000000000001"
+bekle "Arac gerektirmeyen turde arac_vin -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=ARAC_INCELEME&tarih=$GUN&arac_vin=VIN00000000000001"
+bekle "Kucuk harf VIN kabul edilir" 200 '"ok":true' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN&arac_vin=vin00000000000001"
+bekle "POST /saglik -> 405" 405 'yöntem desteklenmiyor' -X POST "$TABAN/saglik"
+bekle "HEAD /saglik -> 200 (govdesiz)" 200 '' -I "$TABAN/saglik"
+bekle "Tanimsiz alt yol /saglik/xyz -> 404" 404 'bulunamadı' "$TABAN/saglik/xyz"
+bekle "Sondaki egik cizgi kabul edilir (/bot/sube/)" 200 '"ok":true' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/sube/"
+# Ortusen tur_saat pencereleri ayni dilimi iki kez uretmemeli: 09,10,11 -> 3 slot.
+YANIT_O=$(curl -s -H "$TOK" -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=ARAC_INCELEME&tarih=$GUN")
+sayi_o=$(printf '%s' "$YANIT_O" | grep -oF '"baslangic"' | wc -l | tr -d ' ')
+if [ "$sayi_o" -eq 3 ]; then
+  echo "[PASS] Ortusen tur_saat pencereleri tekrarli slot uretmiyor (3 slot)"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Ortusen pencereler $sayi_o slot uretti (3 beklenirdi)"; KALAN=$((KALAN + 1))
+fi
+bekle "Tanimsiz alt yol -> 404" 404 '"kod":"YOL_YOK"' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/sube/ekstra"
+bekle "Tekrarli parametre -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&sube_id=2&tur_kodu=TEST_SURUSU&tarih=$GUN"
+
 echo "--- GET /bot/slot (SERVIS_TESLIM) — içerik kontrolleri ---"
-TEL_S='X-Musteri-Telefon: +905550001177'
 
 # arac_vin verilmeden: yalnizca TESLIME_HAZIR araclar listelenmeli
 YANIT=$(curl -s -H "$TOK" -H "$TEL_S" "$TABAN/bot/slot?sube_id=1&tur_kodu=SERVIS_TESLIM&tarih=$GUN")

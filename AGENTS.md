@@ -11,29 +11,41 @@ session'lara ve ekip arkadaşına bağlam aktarımı içindir.
 3. `mini-dealership.md` — spec; PDF'lerle uyumlu tutulur (ör. mesai kuralı PDF'e
    göre düzeltildi). Değiştirmeden önce kullanıcıya sor.
 
-## Durum (16 Kasım 2026 itibarıyla)
+## Durum (21 Kasım 2026 itibarıyla)
 
 - GitHub reposu: **github.com/huseyin-usta/mini-dealership** (public, `main`).
   Commit yazarı: `h.usta@etu.edu.tr` (gt-arc maili KULLANILMAZ).
   Collaborator: `aslyagm` (Şevda Yağmur ASAL, write yetkisi).
 - İlerleme: **Veritabanı katmanı tamamen tamamlandı** (`db/010`–`500`):
   - **20/20 tablo DDL ve doğrulama trigger'ları** (`210_trg_servis_garanti.sql`, `220_trg_randevu_dogrula.sql`).
-  - **View'lar** (`300`–`350`): maskeleme fonksiyonları, müşteri son randevu,
-    servis durumu, garanti durumu, maskeli rapor view'ları, bot için PII'siz `v_dolu_slot`.
+  - **View'lar** (`300`–`350`, `430`): maskeleme fonksiyonları, müşteri son randevu,
+    servis durumu, garanti durumu, maskeli rapor view'ları, bot için PII'siz `v_dolu_slot`,
+    bot için müşteriye özel masrafsız `v_musteri_servis_durumu` (`430`, `fn_aktif_musteri_id()` ile süzülür).
   - **Roller + RLS + GRANT/REVOKE** (`400`–`420`): admin/personel/bot/rapor
     NOLOGIN rolleri; bot kimliği `SET LOCAL app.musteri_telefon` ile (fail-closed);
     hiçbir role DELETE yok. Doğrulama trigger'ları `420`'de SECURITY DEFINER yapıldı.
   - **Sentetik veri üretici** (`veri/uret.py`, `scripts/veri-yukle.sh`): ana işlem
     tablolarında 453.096 satır (toplam 650k+ satır) üretilip doğrulandı.
   - **Analitik sorgular ve indeks analizi** (`db/500_indeksler.sql`,
-    `docs/analiz/sorgular.sql`, `docs/analiz/indeks-analizi.md`): 7 sorgu ve 11 indeks
+    `docs/analiz/sorgular.sql`, `docs/analiz/indeks-analizi.md`): 7 sorgu ve 13 indeks
     `EXPLAIN (ANALYZE, BUFFERS)` ile ölçüldü.
-- Test: `scripts/test-db.sh` 22 senaryo (trigger, view, rol/RLS, indekslerle), hepsi geçiyor.
+- **Bot API (backend)**: `docs/api/bot-sozlesmesi.md` sözleşmesi; `GET /bot/sube` ve
+  `GET /bot/slot` uçtan uca tamam (sözleşme + Java + test). Köprü↔backend arasında
+  `X-Bot-Token` (BOT_TOKEN, ≥32 karakter) zorunlu; varsayılan bind `127.0.0.1`
+  (`BIND_ADRESI`). Kalan bot uçları: `/bot/arac`, `/bot/randevu` (POST/GET/iptal), `/bot/mesaj`.
+- Test: `scripts/test-db.sh` 23 senaryo (trigger, view, rol/RLS, müşteri izolasyonu);
+  `scripts/test-bot-http.sh` 70 HTTP senaryosu (gerçek Postgres + gerçek JAR, token/kimlik/
+  müsaitlik/hatalar). Hepsi geçiyor.
 - Şema görselleştirme: `scripts/sema-diyagram.sh` (tbls + geçici Docker Postgres)
   → `docs/sema/` çıktısı güncel şemayla (tablolar, view'lar, trigger'lar, indeksler) yenilendi.
-- Kalan işler: Java backend (JDBC, ORM yok), panel (HTML/JS), WhatsApp köprüsü, Docker Compose.
+- Kalan işler: bot API'nin kalan uçları, WhatsApp köprüsü, panel API'leri, panel (HTML/JS, Şevda), Docker Compose.
+- **Açık takip (randevu yazma ucu gelince):** `fn_randevu_dogrula` trigger'ı
+  TESLIMAT/bakım/servise girişte aracın müşteriye ait olduğunu **denetlemiyor**
+  (bugün yazma yolu yok; tek savunma `/bot/slot`). `POST /bot/randevu` yazılırken
+  trigger'a sahiplik + şube kuralı eklenecek; DDL mühürlü olduğu için bu turda
+  dokunulmadı.
 - Takvim: son rapor **3 Aralık 2026**, dönem sonunda demo.
-- Görev dağılımı: spec'in "Görev dağılımı" bölümünde.
+- Görev dağılımı: `mini-dealership.md`'deki taslak + bu dosyadaki "İş bölümü" bölümü.
 
 ## Kilit mimari kararlar (değiştirme, tartışmak için sor)
 
