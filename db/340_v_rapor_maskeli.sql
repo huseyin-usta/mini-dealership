@@ -38,7 +38,9 @@ SELECT r.randevu_id,
        mo.ad                                AS model_adi,
        ve.paket_adi,
        r.musteri_id,
-       fn_maskele_ad(mu.ad) || ' ' || fn_maskele_ad(mu.soyad) AS musteri,
+       -- NULL-güvenli: ad/soyad sonradan öğrenilebilir (bkz. 440);
+       -- concat_ws NULL parçaları atlar, '||' tüm sonucu NULL yapardı.
+       nullif(concat_ws(' ', fn_maskele_ad(mu.ad), fn_maskele_ad(mu.soyad)), '') AS musteri,
        fn_maskele_telefon(mu.telefon)       AS musteri_telefon
   FROM randevu r
   JOIN randevu_turu rt  ON rt.tur_kodu  = r.tur_kodu
