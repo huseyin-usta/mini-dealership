@@ -1,0 +1,54 @@
+                                                                                                                             QUERY PLAN                                                                                                                              
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Incremental Sort  (cost=2878.03..2884.24 rows=96 width=54) (actual time=16.271..16.278 rows=16 loops=1)
+   Sort Key: aylik.departman, (rank() OVER (?))
+   Presorted Key: aylik.departman
+   Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 26kB  Peak Memory: 26kB
+   Buffers: shared hit=1294
+   ->  WindowAgg  (cost=2878.00..2879.92 rows=96 width=54) (actual time=16.206..16.228 rows=16 loops=1)
+         Buffers: shared hit=1288
+         ->  Sort  (cost=2878.00..2878.24 rows=96 width=46) (actual time=16.195..16.201 rows=16 loops=1)
+               Sort Key: aylik.departman, aylik.adet DESC
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=1288
+               ->  Subquery Scan on aylik  (cost=2866.57..2874.83 rows=96 width=46) (actual time=16.081..16.171 rows=16 loops=1)
+                     Buffers: shared hit=1288
+                     ->  GroupAggregate  (cost=2866.57..2873.87 rows=96 width=62) (actual time=16.079..16.167 rows=16 loops=1)
+                           Group Key: c.calisan_id, rt.departman
+                           Filter: (count(*) >= 3)
+                           Buffers: shared hit=1288
+                           ->  Sort  (cost=2866.57..2867.38 rows=322 width=22) (actual time=16.060..16.088 rows=324 loops=1)
+                                 Sort Key: c.calisan_id, rt.departman
+                                 Sort Method: quicksort  Memory: 40kB
+                                 Buffers: shared hit=1288
+                                 ->  Hash Join  (cost=7.40..2853.16 rows=322 width=22) (actual time=14.397..15.903 rows=324 loops=1)
+                                       Hash Cond: ((r.tur_kodu)::text = (rt.tur_kodu)::text)
+                                       Buffers: shared hit=1285
+                                       ->  Nested Loop  (cost=6.24..2850.65 rows=322 width=29) (actual time=14.353..15.747 rows=324 loops=1)
+                                             Buffers: shared hit=1284
+                                             ->  Seq Scan on sube s  (cost=0.00..1.10 rows=1 width=4) (actual time=0.013..0.015 rows=1 loops=1)
+                                                   Filter: (sube_id = 1)
+                                                   Rows Removed by Filter: 7
+                                                   Buffers: shared hit=1
+                                             ->  Hash Join  (cost=6.24..2846.33 rows=322 width=33) (actual time=14.338..15.681 rows=324 loops=1)
+                                                   Hash Cond: (r.calisan_id = c.calisan_id)
+                                                   Buffers: shared hit=1283
+                                                   ->  Seq Scan on randevu r  (cost=0.00..2839.22 rows=322 width=21) (actual time=14.185..15.417 rows=324 loops=1)
+                                                         Filter: ((baslangic >= '2026-10-01 00:00:00'::timestamp without time zone) AND (baslangic < '2026-11-01 00:00:00'::timestamp without time zone) AND (sube_id = 1) AND ((durum)::text = 'TAMAMLANDI'::text))
+                                                         Rows Removed by Filter: 77637
+                                                         Buffers: shared hit=1280
+                                                   ->  Hash  (cost=4.44..4.44 rows=144 width=16) (actual time=0.099..0.099 rows=144 loops=1)
+                                                         Buckets: 1024  Batches: 1  Memory Usage: 15kB
+                                                         Buffers: shared hit=3
+                                                         ->  Seq Scan on calisan c  (cost=0.00..4.44 rows=144 width=16) (actual time=0.020..0.051 rows=144 loops=1)
+                                                               Buffers: shared hit=3
+                                       ->  Hash  (cost=1.07..1.07 rows=7 width=18) (actual time=0.023..0.023 rows=7 loops=1)
+                                             Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                             Buffers: shared hit=1
+                                             ->  Seq Scan on randevu_turu rt  (cost=0.00..1.07 rows=7 width=18) (actual time=0.009..0.012 rows=7 loops=1)
+                                                   Buffers: shared hit=1
+ Planning:
+   Buffers: shared hit=422
+ Planning Time: 2.380 ms
+ Execution Time: 16.482 ms
+(51 rows)

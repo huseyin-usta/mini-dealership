@@ -1,0 +1,49 @@
+                                                                                                      QUERY PLAN                                                                                                      
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=6410.38..6410.38 rows=1 width=237) (actual time=32.465..37.177 rows=3 loops=1)
+   Sort Key: (sum(si.ucret)) DESC
+   Sort Method: quicksort  Memory: 25kB
+   Buffers: shared hit=3484
+   ->  GroupAggregate  (cost=6315.02..6410.37 rows=1 width=237) (actual time=31.815..37.126 rows=3 loops=1)
+         Group Key: sk.sebep
+         Filter: (sum(si.ucret) > '0'::numeric)
+         Buffers: shared hit=3481
+         ->  Nested Loop  (cost=6315.02..6396.05 rows=632 width=25) (actual time=31.735..36.915 rows=632 loops=1)
+               Buffers: shared hit=3481
+               ->  Gather Merge  (cost=6315.02..6387.05 rows=632 width=29) (actual time=31.660..36.543 rows=632 loops=1)
+                     Workers Planned: 1
+                     Workers Launched: 1
+                     Buffers: shared hit=3480
+                     ->  Sort  (cost=5315.01..5315.94 rows=372 width=29) (actual time=27.398..27.437 rows=316 loops=2)
+                           Sort Key: sk.sebep, sk.servis_kaydi_id
+                           Sort Method: quicksort  Memory: 42kB
+                           Buffers: shared hit=3480
+                           Worker 0:  Sort Method: quicksort  Memory: 41kB
+                           ->  Parallel Hash Join  (cost=2892.64..5299.13 rows=372 width=29) (actual time=25.959..27.004 rows=316 loops=2)
+                                 Hash Cond: (si.servis_kaydi_id = sk.servis_kaydi_id)
+                                 Buffers: shared hit=3463
+                                 ->  Parallel Seq Scan on servis_islem si  (cost=0.00..2097.68 rows=81768 width=20) (actual time=0.022..8.356 rows=69502 loops=2)
+                                       Buffers: shared hit=1280
+                                 ->  Parallel Hash  (cost=2891.54..2891.54 rows=88 width=13) (actual time=7.871..7.873 rows=75 loops=2)
+                                       Buckets: 1024  Batches: 1  Memory Usage: 72kB
+                                       Buffers: shared hit=2135
+                                       ->  Nested Loop  (cost=0.29..2891.54 rows=88 width=13) (actual time=6.772..7.807 rows=75 loops=2)
+                                             Buffers: shared hit=2135
+                                             ->  Parallel Seq Scan on randevu r  (cost=0.00..2082.54 rows=208 width=8) (actual time=6.702..7.371 rows=176 loops=2)
+                                                   Filter: ((baslangic >= '2026-10-01 00:00:00'::timestamp without time zone) AND (baslangic < '2026-11-01 00:00:00'::timestamp without time zone) AND (sube_id = 1))
+                                                   Rows Removed by Filter: 38804
+                                                   Buffers: shared hit=1280
+                                             ->  Index Scan using servis_kaydi_acilis_randevu_id_key on servis_kaydi sk  (cost=0.29..3.89 rows=1 width=13) (actual time=0.002..0.002 rows=0 loops=352)
+                                                   Index Cond: (acilis_randevu_id = r.randevu_id)
+                                                   Buffers: shared hit=855
+               ->  Materialize  (cost=0.00..1.10 rows=1 width=4) (actual time=0.000..0.000 rows=1 loops=632)
+                     Buffers: shared hit=1
+                     ->  Seq Scan on sube s  (cost=0.00..1.10 rows=1 width=4) (actual time=0.044..0.046 rows=1 loops=1)
+                           Filter: (sube_id = 1)
+                           Rows Removed by Filter: 7
+                           Buffers: shared hit=1
+ Planning:
+   Buffers: shared hit=342
+ Planning Time: 2.190 ms
+ Execution Time: 37.392 ms
+(46 rows)

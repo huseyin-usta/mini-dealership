@@ -1,0 +1,30 @@
+                                                                         QUERY PLAN                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.71..111.99 rows=12 width=62) (actual time=0.184..0.385 rows=20 loops=1)
+   Buffers: shared hit=90
+   ->  Nested Loop  (cost=0.71..111.99 rows=12 width=62) (actual time=0.183..0.380 rows=20 loops=1)
+         Buffers: shared hit=90
+         ->  Index Scan using idx_mesaj_musteri_zaman on mesaj m  (cost=0.42..49.64 rows=12 width=65) (actual time=0.041..0.080 rows=20 loops=1)
+               Index Cond: (musteri_id = 1500)
+               Buffers: shared hit=7
+         ->  Materialize  (cost=0.29..4.31 rows=1 width=4) (actual time=0.004..0.004 rows=1 loops=20)
+               Buffers: shared hit=3
+               ->  Index Only Scan using musteri_pkey on musteri mu  (cost=0.29..4.30 rows=1 width=4) (actual time=0.060..0.060 rows=1 loops=1)
+                     Index Cond: (musteri_id = 1500)
+                     Heap Fetches: 0
+                     Buffers: shared hit=3
+         SubPlan 2
+           ->  Result  (cost=4.81..4.82 rows=1 width=8) (actual time=0.006..0.006 rows=1 loops=20)
+                 Buffers: shared hit=80
+                 InitPlan 1 (returns $1)
+                   ->  Limit  (cost=0.42..4.81 rows=1 width=8) (actual time=0.006..0.006 rows=1 loops=20)
+                         Buffers: shared hit=80
+                         ->  Index Scan using idx_randevu_musteri on randevu r  (cost=0.42..22.39 rows=5 width=8) (actual time=0.005..0.005 rows=1 loops=20)
+                               Index Cond: ((musteri_id = mu.musteri_id) AND (baslangic IS NOT NULL))
+                               Filter: ((durum)::text <> 'IPTAL'::text)
+                               Buffers: shared hit=80
+ Planning:
+   Buffers: shared hit=418
+ Planning Time: 2.355 ms
+ Execution Time: 0.470 ms
+(27 rows)

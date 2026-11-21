@@ -1,0 +1,5 @@
+        vin        |   plaka    | musteri_id | model_adi | garanti_baslangic | garanti_bitis | garanti_km | son_bilinen_km | son_bakim_tarihi | sonraki_bakim_son_tarih | sonraki_bakim_son_km | garanti_durumu 
+-------------------+------------+------------+-----------+-------------------+---------------+------------+----------------+------------------+-------------------------+----------------------+----------------
+ KMHBA000000000282 | 06 JLA 100 |        136 | Bayon     | 2020-03-14        | 2023-03-14    |     100000 |         182395 | 2026-09-01       | 2027-09-01              |               197395 | SURE_DOLDU
+(1 row)
+

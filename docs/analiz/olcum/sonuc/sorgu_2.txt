@@ -1,0 +1,20 @@
+    calisan     | departman | tamamlanan_randevu | departman_sirasi 
+----------------+-----------+--------------------+------------------
+ Ömer Taş       | SATIS     |                 37 |                1
+ Kaan Aslan     | SATIS     |                 36 |                2
+ Tolga Koç      | SATIS     |                 36 |                2
+ İbrahim Demir  | SATIS     |                 13 |                4
+ Emre Güneş     | SATIS     |                 11 |                5
+ Kerem Demir    | SATIS     |                 10 |                6
+ Tuğba Aslan    | SATIS     |                  9 |                7
+ Eren Keskin    | SERVIS    |                 24 |                1
+ Merve Yıldırım | SERVIS    |                 22 |                2
+ Fatma Avcı     | SERVIS    |                 22 |                2
+ Emre Yıldız    | SERVIS    |                 21 |                4
+ Tuğba Kaya     | SERVIS    |                 21 |                4
+ Onur Yıldırım  | SERVIS    |                 20 |                6
+ Ece Karaca     | SERVIS    |                 17 |                7
+ Hatice Bulut   | SERVIS    |                 16 |                8
+ Gamze Akın     | SERVIS    |                  9 |                9
+(16 rows)
+

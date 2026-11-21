@@ -1,0 +1,46 @@
+                                                                                                        QUERY PLAN                                                                                                        
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=1648.16..1648.16 rows=1 width=237) (actual time=11.530..11.535 rows=3 loops=1)
+   Sort Key: (sum(si.ucret)) DESC
+   Sort Method: quicksort  Memory: 25kB
+   Buffers: shared hit=803
+   ->  GroupAggregate  (cost=1632.15..1648.15 rows=1 width=237) (actual time=11.212..11.470 rows=3 loops=1)
+         Group Key: sk.sebep
+         Filter: (sum(si.ucret) > '0'::numeric)
+         Buffers: shared hit=800
+         ->  Sort  (cost=1632.15..1633.74 rows=636 width=25) (actual time=11.165..11.216 rows=632 loops=1)
+               Sort Key: sk.sebep, sk.servis_kaydi_id
+               Sort Method: quicksort  Memory: 59kB
+               Buffers: shared hit=800
+               ->  Nested Loop  (cost=802.18..1602.53 rows=636 width=25) (actual time=9.238..10.473 rows=632 loops=1)
+                     Buffers: shared hit=794
+                     ->  Nested Loop  (cost=801.76..1509.85 rows=151 width=9) (actual time=9.166..9.664 rows=150 loops=1)
+                           Buffers: shared hit=342
+                           ->  Seq Scan on sube s  (cost=0.00..1.10 rows=1 width=4) (actual time=0.009..0.012 rows=1 loops=1)
+                                 Filter: (sube_id = 1)
+                                 Rows Removed by Filter: 7
+                                 Buffers: shared hit=1
+                           ->  Hash Join  (cost=801.76..1507.24 rows=151 width=13) (actual time=9.155..9.627 rows=150 loops=1)
+                                 Hash Cond: (sk.acilis_randevu_id = r.randevu_id)
+                                 Buffers: shared hit=341
+                                 ->  Seq Scan on servis_kaydi sk  (cost=0.00..618.89 rows=32989 width=13) (actual time=0.011..3.557 rows=32989 loops=1)
+                                       Buffers: shared hit=289
+                                 ->  Hash  (cost=797.29..797.29 rows=357 width=8) (actual time=0.368..0.370 rows=352 loops=1)
+                                       Buckets: 1024  Batches: 1  Memory Usage: 22kB
+                                       Buffers: shared hit=52
+                                       ->  Bitmap Heap Scan on randevu r  (cost=16.97..797.29 rows=357 width=8) (actual time=0.082..0.278 rows=352 loops=1)
+                                             Recheck Cond: ((sube_id = 1) AND (baslangic >= '2026-10-01 00:00:00'::timestamp without time zone) AND (baslangic < '2026-11-01 00:00:00'::timestamp without time zone))
+                                             Heap Blocks: exact=46
+                                             Buffers: shared hit=52
+                                             ->  Bitmap Index Scan on idx_randevu_sube_baslangic  (cost=0.00..16.88 rows=357 width=0) (actual time=0.057..0.058 rows=352 loops=1)
+                                                   Index Cond: ((sube_id = 1) AND (baslangic >= '2026-10-01 00:00:00'::timestamp without time zone) AND (baslangic < '2026-11-01 00:00:00'::timestamp without time zone))
+                                                   Buffers: shared hit=6
+                     ->  Index Only Scan using idx_servis_islem_kayit_id on servis_islem si  (cost=0.42..0.57 rows=4 width=20) (actual time=0.003..0.004 rows=4 loops=150)
+                           Index Cond: (servis_kaydi_id = sk.servis_kaydi_id)
+                           Heap Fetches: 0
+                           Buffers: shared hit=452
+ Planning:
+   Buffers: shared hit=496
+ Planning Time: 2.816 ms
+ Execution Time: 11.762 ms
+(43 rows)

@@ -1,0 +1,133 @@
+                                                                                                                                                                                                                                                       QUERY PLAN                                                                                                                                                                                                                                                        
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=8654.17..8654.19 rows=9 width=110) (actual time=469.006..469.027 rows=8 loops=1)
+   Sort Key: (round(((COALESCE(sum(si.ucret) FILTER (WHERE ((si.odeme_kaynagi)::text = 'GARANTI'::text)), '0'::numeric) / NULLIF(sum(si.ucret), '0'::numeric)) * '100'::numeric), 2)) DESC
+   Sort Method: quicksort  Memory: 25kB
+   Buffers: shared hit=91970
+   ->  GroupAggregate  (cost=8652.48..8654.03 rows=9 width=110) (actual time=467.806..468.966 rows=8 loops=1)
+         Group Key: m.ad
+         Filter: (count(si.islem_id) > 10)
+         Buffers: shared hit=91967
+         ->  Sort  (cost=8652.48..8652.59 rows=46 width=26) (actual time=467.571..467.850 rows=3417 loops=1)
+               Sort Key: m.ad
+               Sort Method: quicksort  Memory: 275kB
+               Buffers: shared hit=91967
+               ->  Nested Loop  (cost=7314.57..8651.21 rows=46 width=26) (actual time=337.744..465.179 rows=3417 loops=1)
+                     Buffers: shared hit=91964
+                     ->  Nested Loop  (cost=7314.15..8619.75 rows=11 width=10) (actual time=337.714..454.889 rows=1143 loops=1)
+                           Buffers: shared hit=87361
+                           ->  Nested Loop  (cost=7313.86..8534.00 rows=260 width=10) (actual time=337.556..398.388 rows=22102 loops=1)
+                                 Buffers: shared hit=32705
+                                 ->  Hash Join  (cost=7313.57..7447.35 rows=27 width=138) (actual time=337.476..352.997 rows=4595 loops=1)
+                                       Hash Cond: ((s.arac_vin)::text = (a.vin)::text)
+                                       Join Filter: (CASE WHEN (LOCALTIMESTAMP > (s.satis_zamani + make_interval((m.garanti_yil)::integer, 0, 0, 0, 0, 0, '0'::double precision))) THEN 'SURE_DOLDU'::text WHEN (COALESCE(k.son_bilinen_km, 0) > m.garanti_km) THEN 'KM_ASILDI'::text WHEN (b.gecmiste_aksatildi OR (LOCALTIMESTAMP > (b.son_bakim_zamani + '1 year'::interval)) OR ((COALESCE(k.son_bilinen_km, 0) - b.son_bakim_km) > 15000)) THEN 'BAKIM_AKSATILDI'::text ELSE 'GECERLI'::text END = 'GECERLI'::text)
+                                       Rows Removed by Join Filter: 2867
+                                       Buffers: shared hit=1656
+                                       CTE satis
+                                         ->  HashAggregate  (cost=408.18..475.77 rows=5407 width=26) (actual time=5.595..8.654 rows=7462 loops=1)
+                                               Group Key: stok_hareketi.arac_vin
+                                               Batches: 1  Memory Usage: 1169kB
+                                               Buffers: shared hit=56
+                                               ->  Index Only Scan using idx_stok_hareketi_tur_zaman on stok_hareketi  (cost=0.29..370.87 rows=7462 width=26) (actual time=0.060..1.783 rows=7462 loops=1)
+                                                     Index Cond: (hareket_turu = 'SATIS'::text)
+                                                     Heap Fetches: 0
+                                                     Buffers: shared hit=56
+                                       CTE gecerli_servis
+                                         ->  Hash Join  (cost=1031.25..3799.31 rows=30100 width=35) (actual time=18.075..82.068 rows=32989 loops=1)
+                                               Hash Cond: (r_1.randevu_id = sk_1.acilis_randevu_id)
+                                               Buffers: shared hit=1506
+                                               ->  Seq Scan on randevu r_1  (cost=0.00..2581.32 rows=71134 width=30) (actual time=0.024..41.695 rows=71150 loops=1)
+                                                     Filter: (((durum)::text <> ALL ('{IPTAL,GELMEDI}'::text[])) AND (baslangic <= LOCALTIMESTAMP))
+                                                     Rows Removed by Filter: 6811
+                                                     Buffers: shared hit=1217
+                                               ->  Hash  (cost=618.89..618.89 rows=32989 width=13) (actual time=17.615..17.617 rows=32989 loops=1)
+                                                     Buckets: 65536  Batches: 1  Memory Usage: 2059kB
+                                                     Buffers: shared hit=289
+                                                     ->  Seq Scan on servis_kaydi sk_1  (cost=0.00..618.89 rows=32989 width=13) (actual time=0.017..7.776 rows=32989 loops=1)
+                                                           Buffers: shared hit=289
+                                       ->  CTE Scan on satis s  (cost=0.00..108.14 rows=5407 width=60) (actual time=5.598..7.039 rows=7462 loops=1)
+                                             Buffers: shared hit=56
+                                       ->  Hash  (cost=3035.99..3035.99 rows=200 width=99) (actual time=331.812..331.825 rows=7462 loops=1)
+                                             Buckets: 8192 (originally 1024)  Batches: 1 (originally 1)  Memory Usage: 807kB
+                                             Buffers: shared hit=1600
+                                             ->  Hash Left Join  (cost=2843.30..3035.99 rows=200 width=99) (actual time=313.878..327.638 rows=7462 loops=1)
+                                                   Hash Cond: ((a.vin)::text = (k.arac_vin)::text)
+                                                   Buffers: shared hit=1600
+                                                   ->  Hash Join  (cost=2084.30..2276.47 rows=200 width=95) (actual time=291.789..302.220 rows=7462 loops=1)
+                                                         Hash Cond: (v.model_id = m.model_id)
+                                                         Buffers: shared hit=1600
+                                                         ->  Hash Join  (cost=2083.12..2274.49 rows=200 width=87) (actual time=291.747..299.581 rows=7462 loops=1)
+                                                               Hash Cond: (a.versiyon_id = v.versiyon_id)
+                                                               Buffers: shared hit=1599
+                                                               ->  Hash Join  (cost=2079.13..2269.95 rows=200 width=87) (actual time=291.660..297.102 rows=7462 loops=1)
+                                                                     Hash Cond: ((a.vin)::text = (b.arac_vin)::text)
+                                                                     Buffers: shared hit=1598
+                                                                     ->  Seq Scan on arac a  (cost=0.00..169.64 rows=8064 width=22) (actual time=0.015..1.187 rows=8064 loops=1)
+                                                                           Buffers: shared hit=89
+                                                                     ->  Hash  (cost=2076.63..2076.63 rows=200 width=65) (actual time=291.595..291.602 rows=7462 loops=1)
+                                                                           Buckets: 8192 (originally 1024)  Batches: 1 (originally 1)  Memory Usage: 560kB
+                                                                           Buffers: shared hit=1509
+                                                                           ->  Subquery Scan on b  (cost=1526.36..2076.63 rows=200 width=65) (actual time=197.509..288.299 rows=7462 loops=1)
+                                                                                 Buffers: shared hit=1509
+                                                                                 ->  GroupAggregate  (cost=1526.36..2074.63 rows=200 width=65) (actual time=197.508..287.152 rows=7462 loops=1)
+                                                                                       Group Key: satis.arac_vin
+                                                                                       Buffers: shared hit=1509
+                                                                                       ->  Incremental Sort  (cost=1526.36..1936.95 rows=6759 width=76) (actual time=197.484..265.041 rows=35979 loops=1)
+                                                                                             Sort Key: satis.arac_vin, satis.satis_zamani DESC
+                                                                                             Presorted Key: satis.arac_vin
+                                                                                             Full-sort Groups: 1032  Sort Method: quicksort  Average Memory: 27kB  Peak Memory: 27kB
+                                                                                             Buffers: shared hit=1509
+                                                                                             ->  WindowAgg  (cost=1524.75..1676.82 rows=6759 width=76) (actual time=197.318..236.342 rows=35979 loops=1)
+                                                                                                   Buffers: shared hit=1506
+                                                                                                   ->  Sort  (cost=1524.75..1541.64 rows=6759 width=64) (actual time=197.300..201.797 rows=35979 loops=1)
+                                                                                                         Sort Key: satis.arac_vin, satis.satis_zamani
+                                                                                                         Sort Method: quicksort  Memory: 3366kB
+                                                                                                         Buffers: shared hit=1506
+                                                                                                         ->  Append  (cost=0.00..1094.79 rows=6759 width=64) (actual time=0.002..138.411 rows=35979 loops=1)
+                                                                                                               Buffers: shared hit=1506
+                                                                                                               ->  CTE Scan on satis  (cost=0.00..108.14 rows=5407 width=64) (actual time=0.001..6.805 rows=7462 loops=1)
+                                                                                                               ->  Hash Join  (cost=679.12..952.85 rows=1352 width=64) (actual time=113.939..127.496 rows=28517 loops=1)
+                                                                                                                     Hash Cond: ((s_1.arac_vin)::text = (g.arac_vin)::text)
+                                                                                                                     Join Filter: (g.baslangic >= s_1.satis_zamani)
+                                                                                                                     Buffers: shared hit=1506
+                                                                                                                     ->  CTE Scan on satis s_1  (cost=0.00..108.14 rows=5407 width=60) (actual time=0.001..0.912 rows=7462 loops=1)
+                                                                                                                     ->  Hash  (cost=677.25..677.25 rows=150 width=64) (actual time=113.919..113.920 rows=28517 loops=1)
+                                                                                                                           Buckets: 32768 (originally 1024)  Batches: 1 (originally 1)  Memory Usage: 2150kB
+                                                                                                                           Buffers: shared hit=1506
+                                                                                                                           ->  CTE Scan on gecerli_servis g  (cost=0.00..677.25 rows=150 width=64) (actual time=18.105..103.808 rows=28517 loops=1)
+                                                                                                                                 Filter: ((sebep)::text = 'BAKIM'::text)
+                                                                                                                                 Rows Removed by Filter: 4472
+                                                                                                                                 Buffers: shared hit=1506
+                                                               ->  Hash  (cost=2.33..2.33 rows=133 width=8) (actual time=0.060..0.060 rows=133 loops=1)
+                                                                     Buckets: 1024  Batches: 1  Memory Usage: 14kB
+                                                                     Buffers: shared hit=1
+                                                                     ->  Seq Scan on versiyon v  (cost=0.00..2.33 rows=133 width=8) (actual time=0.007..0.027 rows=133 loops=1)
+                                                                           Buffers: shared hit=1
+                                                         ->  Hash  (cost=1.08..1.08 rows=8 width=16) (actual time=0.019..0.019 rows=8 loops=1)
+                                                               Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                                               Buffers: shared hit=1
+                                                               ->  Seq Scan on model m  (cost=0.00..1.08 rows=8 width=16) (actual time=0.009..0.011 rows=8 loops=1)
+                                                                     Buffers: shared hit=1
+                                                   ->  Hash  (cost=756.50..756.50 rows=200 width=56) (actual time=22.071..22.073 rows=6462 loops=1)
+                                                         Buckets: 8192 (originally 1024)  Batches: 1 (originally 1)  Memory Usage: 405kB
+                                                         ->  Subquery Scan on k  (cost=752.50..756.50 rows=200 width=56) (actual time=17.218..19.909 rows=6462 loops=1)
+                                                               ->  HashAggregate  (cost=752.50..754.50 rows=200 width=56) (actual time=17.216..18.902 rows=6462 loops=1)
+                                                                     Group Key: g_1.arac_vin
+                                                                     Batches: 1  Memory Usage: 993kB
+                                                                     ->  CTE Scan on gecerli_servis g_1  (cost=0.00..602.00 rows=30100 width=56) (actual time=0.001..3.740 rows=32989 loops=1)
+                                 ->  Index Scan using idx_randevu_arac_vin on randevu r  (cost=0.29..40.14 rows=10 width=22) (actual time=0.005..0.008 rows=5 loops=4595)
+                                       Index Cond: ((arac_vin)::text = (a.vin)::text)
+                                       Buffers: shared hit=31049
+                           ->  Index Scan using servis_kaydi_acilis_randevu_id_key on servis_kaydi sk  (cost=0.29..0.33 rows=1 width=8) (actual time=0.002..0.002 rows=0 loops=22102)
+                                 Index Cond: (acilis_randevu_id = r.randevu_id)
+                                 Filter: ((sebep)::text = 'ARIZA'::text)
+                                 Rows Removed by Filter: 0
+                                 Buffers: shared hit=54656
+                     ->  Index Scan using idx_servis_islem_kayit_id on servis_islem si  (cost=0.42..2.82 rows=4 width=24) (actual time=0.007..0.008 rows=3 loops=1143)
+                           Index Cond: (servis_kaydi_id = sk.servis_kaydi_id)
+                           Buffers: shared hit=4603
+ Planning:
+   Buffers: shared hit=1062
+ Planning Time: 7.318 ms
+ Execution Time: 472.063 ms
+(130 rows)

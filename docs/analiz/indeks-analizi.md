@@ -233,3 +233,45 @@ View `v_servis_durumu` üzerinden `randevu` tablosuna iner; filtre
 koşulu kullanılabildiği için planner `Seq Scan`'i tamamen bırakır. `arac`
 tablosuna yapılan join `vin` üzerinden yürür ve `arac_pkey` kullanılır;
 `idx_arac_musteri` ise botun doğrudan "araçlarım" sorgusu içindir.
+
+---
+
+## 6. Tekrarlanabilir ölçüm
+
+`scripts/indeks-analiz.sh`, yukarıdaki ölçümleri tek bir komutla yeniden
+üretir. Script geçici bir PostgreSQL 16 konteyneri açar, indekssiz şemayı
+kurar ve veriyi yükler. Ardından [sorgular.sql](sorgular.sql) içindeki
+Sorgu 1–7'yi `EXPLAIN (ANALYZE, BUFFERS)` ile 5'er kez çalıştırıp medyan
+süreyi alır. `500_indeksler.sql` uygulandıktan sonra ölçümü tekrarlar.
+Sonuçlar ve planlar [olcum/](olcum/olcum.md) altına yazılır.
+
+- **JIT kapalıdır.** Maliyet tahmini `jit_above_cost` eşiğini aşan
+  sorgularda yaklaşık 1 saniyelik JIT derleme süresi ölçüme karışıyor ve
+  önce/sonra karşılaştırmasını bozuyordu.
+- Mutlak süreler makineye ve PostgreSQL sürümüne göre değişir (bu bölümdeki
+  ölçümler WSL2 üzerinde PG 16 ile alındı). Karşılaştırmada önce/sonra oranı
+  esas alınmalı.
+- Sorgu 8 (`v_musteri_servis_durumu`) script'e dahil değildir, çünkü oturum
+  değişkeni (`app.musteri_telefon`) gerektiriyor. Bu sorgunun davranışı
+  `scripts/test-db.sh` ile test ediliyor.
+
+## 7. Açık bulgu: `v_arac_garanti_durumu` filtreyi içeri almıyor
+
+Panelin araç detay ekranında tek bir aracın garanti durumu
+`SELECT * FROM v_arac_garanti_durumu WHERE vin = ...` sorgusuyla okunacak.
+İndeksler uygulandıktan sonra bile bu sorgu ~134 ms sürüyor; indekssiz
+hali ~141 ms.
+
+**Neden:** View'daki CTE'ler (`satis`, `gecerli_servis`) birden fazla yerde
+kullanıldığı için PostgreSQL bunları materialize ediyor (planda
+`CTE Scan`). Bu yüzden `vin` filtresi CTE'lerin içine inemiyor ve tek bir
+araç sorulsa bile **tüm araçların** satış ve servis geçmişi hesaplanıyor.
+`idx_randevu_arac_vin` ve `idx_stok_hareketi_arac_zaman` indeksleri bu
+sorguda hiç kullanılmıyor. Aynı view'ı kullanan Sorgu 6 ve 7'nin
+(~370–470 ms) maliyetinin büyük kısmı da buradan geliyor.
+
+**Önerilen çözüm:** View'ı, aracın satır kaynağından başlayıp satış ve
+servis bilgisini `LATERAL` alt sorgularla araç başına çeken bir yapıya
+dönüştürmek. Böylece `vin` filtresi indekse iner. Bu bir view değişikliği
+olduğu için `scripts/test-db.sh`'teki garanti senaryolarıyla birlikte ayrı
+bir iş olarak ele alınmalı.
