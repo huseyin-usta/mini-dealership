@@ -19,10 +19,12 @@ BOTTOKEN=$(openssl rand -hex 32)
 CONTAINER=md-test-bot-http-tmp
 PORT=5436
 HTTP_PORT=8099
+GEMINI_PORT=8098
 JAR=backend/target/mini-dealership-backend.jar
 
 temizle() {
-  [ -n "${SRV_PID:-}" ] && kill "$SRV_PID" 2>/dev/null || true
+  if [ -n "${STUB_PID:-}" ]; then kill "$STUB_PID" 2>/dev/null || true; wait "$STUB_PID" 2>/dev/null || true; fi
+  if [ -n "${SRV_PID:-}" ]; then kill "$SRV_PID" 2>/dev/null || true; wait "$SRV_PID" 2>/dev/null || true; fi
   docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 }
 trap temizle EXIT
@@ -361,10 +363,21 @@ SQL2
 docker exec -i "$CONTAINER" psql -U postgres -d postgres -q \
   -c "ALTER ROLE bot_app PASSWORD '$BOTPW'"
 
+echo "==> Gemini test stub'ı başlatılıyor (port $GEMINI_PORT)..."
+python3 scripts/test-gemini-stub.py "$GEMINI_PORT" "$GUN" >/tmp/md-gemini-stub.log 2>&1 &
+STUB_PID=$!
+for i in $(seq 1 20); do
+  curl -fsS -o /dev/null -X POST "http://127.0.0.1:$GEMINI_PORT/" && break
+  kill -0 "$STUB_PID" 2>/dev/null || { echo "HATA: Gemini stub başlamadı" >&2; exit 1; }
+  sleep 0.3
+done
+
 echo "==> Backend başlatılıyor (port $HTTP_PORT)..."
 DB_HOST=127.0.0.1 DB_PORT=$PORT DB_NAME=postgres \
 BOT_DB_USER=bot_app BOT_DB_PASS="$BOTPW" BOT_TOKEN="$BOTTOKEN" \
 BIND_ADRESI=127.0.0.1 HTTP_PORT=$HTTP_PORT \
+GEMINI_API_KEY=test-anahtar GEMINI_MODEL=test-model \
+GEMINI_URL="http://127.0.0.1:$GEMINI_PORT/v1beta" \
   java -jar "$JAR" > /tmp/md-http-test.log 2>&1 &
 SRV_PID=$!
 
@@ -1308,6 +1321,143 @@ bekle "Iptal: token yok -> 401" 401 '"kod":"YETKISIZ_ISTEK"' \
   -X POST -H "$TEL_I" "$TABAN/bot/randevu/$IID/iptal"
 bekle "Iptal: kimlik yok -> 401" 401 '"kod":"KIMLIK_YOK"' \
   -X POST -H "$TOK" "$TABAN/bot/randevu/$IID/iptal"
+
+echo "--- POST /bot/mesaj ---"
+TEL_M='X-Musteri-Telefon: +905550007901'
+MESAJ=$(curl -s -w '\n%{http_code}' -X POST -H "$TOK" -H "$TEL_M" \
+  -H 'Content-Type: application/json' -d '{"metin":"cumartesi test surusu istiyorum"}' \
+  "$TABAN/bot/mesaj")
+KOD_M=$(printf '%s' "$MESAJ" | tail -n1)
+GOV_M=$(printf '%s' "$MESAJ" | sed '$d')
+if [ "$KOD_M" = "200" ] \
+   && printf '%s' "$GOV_M" | grep -qF '"cevap"' \
+   && printf '%s' "$GOV_M" | grep -qF 'ARAC_SONUC' \
+   && printf '%s' "$GOV_M" | grep -qF 'slotlar' \
+   && printf '%s' "$GOV_M" | grep -qF '"arac_cagrisi":1'; then
+  echo "[PASS] Mesaj: LLM cevabi + arac dongusu (gercek /bot/slot cagrildi)"
+  GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Mesaj: cevap/arac dongusu yanlis"; echo "       HTTP $KOD_M $GOV_M"; KALAN=$((KALAN + 1))
+fi
+# Her iki mesaj da kaydedildi (GELEN + GIDEN), musteri telefonda otomatik acildi
+SATIR=$(docker exec "$CONTAINER" psql -U postgres -d postgres -tAc \
+  "SELECT count(*) FROM mesaj m JOIN musteri mu ON mu.musteri_id=m.musteri_id WHERE mu.telefon='+905550007901'" | tr -d ' ')
+if [ "$SATIR" = "2" ]; then
+  echo "[PASS] Mesaj: GELEN + GIDEN kaydedildi, musteri telefonda acildi"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Mesaj: kayit sayisi $SATIR (2 beklenirdi)"; KALAN=$((KALAN + 1))
+fi
+# LLM arizasi: 503; gelen mesaj yine de kaydedilmis olmali (commit ONCE)
+MESAJ_H=$(curl -s -w '\n%{http_code}' -X POST -H "$TOK" -H "$TEL_M" \
+  -H 'Content-Type: application/json' -d '{"metin":"ARIZA testi"}' "$TABAN/bot/mesaj")
+KOD_H=$(printf '%s' "$MESAJ_H" | tail -n1)
+GOV_H=$(printf '%s' "$MESAJ_H" | sed '$d')
+SATIR2=$(docker exec "$CONTAINER" psql -U postgres -d postgres -tAc \
+  "SELECT count(*) FROM mesaj m JOIN musteri mu ON mu.musteri_id=m.musteri_id WHERE mu.telefon='+905550007901'" | tr -d ' ')
+if [ "$KOD_H" = "503" ] && printf '%s' "$GOV_H" | grep -qF '"kod":"LLM_UNAVAILABLE"' \
+   && [ "$SATIR2" = "3" ]; then
+  echo "[PASS] Mesaj: LLM arizasi -> 503, gelen mesaj yine kayitli (rollback yok)"
+  GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Mesaj: LLM arizasi yaniti ($KOD_H, satir=$SATIR2)"; echo "       $GOV_H"; KALAN=$((KALAN + 1))
+fi
+bekle "Mesaj: bos metin -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -X POST -H "$TOK" -H "$TEL_M" -H 'Content-Type: application/json' -d '{}' "$TABAN/bot/mesaj"
+bekle "Mesaj: GET -> 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' \
+  -H "$TOK" -H "$TEL_M" "$TABAN/bot/mesaj"
+bekle "Mesaj: token yok -> 401" 401 '"kod":"YETKISIZ_ISTEK"' \
+  -X POST -H "$TEL_M" -H 'Content-Type: application/json' -d '{"metin":"x"}' "$TABAN/bot/mesaj"
+
+# 503 sonrasi ayni telefonda sonraki mesaj basarili olmali (kimlik yeniden yazimi)
+MESAJ_S=$(curl -s -w '\n%{http_code}' -X POST -H "$TOK" -H "$TEL_M" \
+  -H 'Content-Type: application/json' -d '{"metin":"tekrar dener misin"}' "$TABAN/bot/mesaj")
+KOD_S=$(printf '%s' "$MESAJ_S" | tail -n1)
+if [ "$KOD_S" = "200" ] && printf '%s' "$MESAJ_S" | grep -qF '"cevap"'; then
+  echo "[PASS] Mesaj: LLM arizasindan sonra sonraki mesaj basarili (kimlik korunuyor)"
+  GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Mesaj: ariza sonrasi mesaj ($KOD_S)"; KALAN=$((KALAN + 1))
+fi
+# Idempotency: ayni kaynak_id iki kez -> LLM tek kez, cevap ayni
+KID="wamid.TEST-$(date +%s)-1"
+IDEM1=$(curl -s -X POST -H "$TOK" -H "$TEL_M" -H 'Content-Type: application/json' \
+  -d "{\"metin\":\"idempotency denemesi\",\"kaynak_id\":\"$KID\"}" "$TABAN/bot/mesaj")
+IDEM2=$(curl -s -X POST -H "$TOK" -H "$TEL_M" -H 'Content-Type: application/json' \
+  -d "{\"metin\":\"idempotency denemesi\",\"kaynak_id\":\"$KID\"}" "$TABAN/bot/mesaj")
+KAYNAK_SAYI=$(docker exec "$CONTAINER" psql -U postgres -d postgres -tAc \
+  "SELECT count(*) FROM mesaj WHERE kaynak_id='$KID'" | tr -d ' ')
+CEVAP1=$(printf '%s' "$IDEM1" | sed -n 's/.*"cevap":"\([^"]*\)".*/\1/p')
+CEVAP2=$(printf '%s' "$IDEM2" | sed -n 's/.*"cevap":"\([^"]*\)".*/\1/p')
+if [ "$KAYNAK_SAYI" = "1" ] && printf '%s' "$IDEM2" | grep -qF '"tekrar":true' \
+   && [ -n "$CEVAP1" ] && [ "$CEVAP1" = "$CEVAP2" ]; then
+  echo "[PASS] Mesaj: ayni kaynak_id ikinci kez islenmiyor (tek LLM, ayni cevap)"
+  GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Mesaj: idempotency bozuk (kayit=$KAYNAK_SAYI)"; echo "       1:$IDEM1"; echo "       2:$IDEM2"
+  KALAN=$((KALAN + 1))
+fi
+# Uydurulan arac: 200 donmeli, model arac hatasini gormeli (503 degil)
+UYDURMA=$(curl -s -w '\n%{http_code}' -X POST -H "$TOK" -H "$TEL_M" \
+  -H 'Content-Type: application/json' -d '{"metin":"BILINMEYEN arac testi"}' "$TABAN/bot/mesaj")
+KOD_UY=$(printf '%s' "$UYDURMA" | tail -n1)
+if [ "$KOD_UY" = "200" ] && printf '%s' "$UYDURMA" | grep -qF 'ARAC_YOK'; then
+  echo "[PASS] Mesaj: uydurulan arac -> arac hatasi modele donuyor (503 degil)"
+  GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Mesaj: uydurulan arac yolu ($KOD_UY)"; KALAN=$((KALAN + 1))
+fi
+# Gecersiz id: arac hatasi, 500 degil
+IDH=$(curl -s -w '\n%{http_code}' -X POST -H "$TOK" -H "$TEL_M" \
+  -H 'Content-Type: application/json' -d '{"metin":"IDHATA testi"}' "$TABAN/bot/mesaj")
+KOD_IDH=$(printf '%s' "$IDH" | tail -n1)
+if [ "$KOD_IDH" = "200" ] && printf '%s' "$IDH" | grep -qF 'GECERSIZ_PARAMETRE'; then
+  echo "[PASS] Mesaj: gecersiz id -> arac hatasi (path injection 500 uretmiyor)"
+  GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Mesaj: gecersiz id yolu ($KOD_IDH)"; KALAN=$((KALAN + 1))
+fi
+# Tek turda iki arac cagrisi
+IKI=$(curl -s -H "$TOK" -H "$TEL_M" -H 'Content-Type: application/json' \
+  -d '{"metin":"IKI arac testi"}' "$TABAN/bot/mesaj")
+if printf '%s' "$IKI" | grep -qF '"arac_cagrisi":2'; then
+  echo "[PASS] Mesaj: tek turda iki arac cagrisi (toplam 2)"
+  GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Mesaj: paralel arac cagrisi sayaci"; echo "       $IKI"; KALAN=$((KALAN + 1))
+fi
+# Metin siniri
+UZUN_M=$(printf 'a%.0s' $(seq 1 4001))
+bekle "Mesaj: 4001 karakter -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -X POST -H "$TOK" -H "$TEL_M" -H 'Content-Type: application/json' \
+  -d "{\"metin\":\"$UZUN_M\"}" "$TABAN/bot/mesaj"
+# Gemini anahtari log'a sizmamali
+if grep -qF 'test-anahtar' /tmp/md-http-test.log; then
+  echo "[FAIL] Mesaj: GEMINI_API_KEY degeri log'a sizdi"; KALAN=$((KALAN + 1))
+else
+  echo "[PASS] Mesaj: GEMINI_API_KEY log'a sizmiyor"; GECEN=$((GECEN + 1))
+fi
+
+echo "--- GEMINI_API_KEY yok (fail-closed) ---"
+KPORT=$((HTTP_PORT + 2))
+DB_HOST=127.0.0.1 DB_PORT=$PORT DB_NAME=postgres BOT_DB_USER=bot_app \
+BOT_DB_PASS="$BOTPW" BOT_TOKEN="$BOTTOKEN" BIND_ADRESI=127.0.0.1 HTTP_PORT=$KPORT \
+  java -jar "$JAR" >/tmp/md-nokey.log 2>&1 &
+NOKEY_PID=$!
+for i in $(seq 1 40); do
+  curl -fsS "http://127.0.0.1:$KPORT/saglik" >/dev/null 2>&1 && break
+  sleep 0.5
+done
+NOKEY=$(curl -s -w '\n%{http_code}' -X POST -H "$TOK" -H "$TEL_M" \
+  -H 'Content-Type: application/json' -d '{"metin":"merhaba"}' "http://127.0.0.1:$KPORT/bot/mesaj")
+kill $NOKEY_PID 2>/dev/null || true
+wait $NOKEY_PID 2>/dev/null || true
+KOD_NK=$(printf '%s' "$NOKEY" | tail -n1)
+if [ "$KOD_NK" = "503" ] && printf '%s' "$NOKEY" | grep -qF '"kod":"LLM_UNAVAILABLE"'; then
+  echo "[PASS] Mesaj: GEMINI_API_KEY yoksa 503 (varsayilan anahtar yok)"
+  GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Mesaj: anahtarsiz yanit $KOD_NK"; KALAN=$((KALAN + 1))
+fi
 
 echo "--- Baslangic guvenlik kontrolleri ---"
 

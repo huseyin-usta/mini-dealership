@@ -767,6 +767,12 @@
           "name": "icerik",
           "type": "text",
           "nullable": false
+        },
+        {
+          "name": "kaynak_id",
+          "type": "varchar(128)",
+          "nullable": true,
+          "comment": "Dış kaynak mesaj kimliği (ör. WhatsApp wamid); aynı kimlik ikinci kez işlenmez."
         }
       ],
       "indexes": [
@@ -776,6 +782,14 @@
           "table": "public.mesaj",
           "columns": [
             "mesaj_id"
+          ]
+        },
+        {
+          "name": "uq_mesaj_kaynak_id",
+          "def": "CREATE UNIQUE INDEX uq_mesaj_kaynak_id ON public.mesaj USING btree (kaynak_id) WHERE (kaynak_id IS NOT NULL)",
+          "table": "public.mesaj",
+          "columns": [
+            "kaynak_id"
           ]
         },
         {

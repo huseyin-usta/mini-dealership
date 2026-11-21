@@ -1157,3 +1157,145 @@ Bot `musteri` tablosunda yalnız `ad`, `soyad` kolonlarını güncelleyebilir
 ```
 
 ---
+
+---
+
+## 7. `POST /bot/mesaj`
+
+Köprünün giriş noktası. Müşteri mesajını kaydeder, LLM'i (araç çağrılarıyla)
+çalıştırır, cevabı kaydeder ve köprüye döner. **Köprü veritabanına dokunmaz.**
+
+> LLM **backend'de** çalışır. Araçlar, bu sözleşmedeki HTTP uçlarıdır; backend
+> kendi API'sini `KENDI_URL` (varsayılan `http://127.0.0.1:HTTP_PORT`) üzerinden
+> çağırır. Böylece LLM'in gördüğü araç ile dışarıya açılan uç aynı şeydir.
+
+### İstek
+
+```json
+{ "metin": "cumartesi test sürüşü istiyorum", "kaynak_id": "wamid.HBgM..." }
+```
+
+| Header | Zorunlu |
+|---|---|
+| `X-Bot-Token` | ✅ |
+| `X-Musteri-Telefon` | ✅ |
+
+| Alan | Zorunlu | Açıklama |
+|---|---|---|
+| `metin` | ✅ | Müşteri mesajı, en fazla 4000 karakter |
+| `kaynak_id` | ❌ | WhatsApp mesaj kimliği (wamid), en fazla 128 karakter. **Idempotency** için: aynı kimlik ikinci kez işlenmez |
+
+Telefon gövdeden **alınmaz**.
+
+### Başarılı yanıt — `200 OK`
+
+```json
+{
+  "ok": true,
+  "veri": {
+    "cevap": "Merhaba! Hangi şehirdeki şubemizi tercih edersiniz?",
+    "mesaj_id": 884213,
+    "arac_cagrisi": 2,
+    "sure_ms": 1840
+  }
+}
+```
+
+Aynı `kaynak_id` ile tekrar gelirse (köprü yeniden denedi):
+
+```json
+{
+  "ok": true,
+  "veri": {
+    "cevap": "Merhaba! Hangi şehirdeki şubemizi tercih edersiniz?",
+    "mesaj_id": 884210,
+    "tekrar": true,
+    "arac_cagrisi": 0,
+    "sure_ms": 0
+  }
+}
+```
+
+`tekrar: true` → LLM **çalıştırılmadı**; kayıtlı cevap döndü. Bu olmadan bir ağ
+tekrarı `randevu_olustur` aracını ikinci kez çalıştırıp **çift randevu** üretirdi.
+
+| Alan | Anlamı |
+|---|---|
+| `cevap` | Müşteriye gönderilecek metin |
+| `mesaj_id` | Kaydedilen **giden** mesajın kimliği |
+| `arac_cagrisi` | LLM'in bu turda yaptığı araç çağrısı sayısı (gözlem için) |
+| `sure_ms` | Uçtan uca süre |
+
+### Akış
+
+1. Müşteri telefonda yoksa açılır (ad/soyad `NULL`; sonradan öğrenilir).
+2. Gelen mesaj `GELEN` olarak `mesaj` tablosuna yazılır ve **commit edilir** —
+   LLM hata verse bile mesaj kaydı korunur.
+3. `kaynak_id` verildiyse ve bu kimliğe ait **cevap zaten varsa** döngü hiç
+   çalışmaz (`tekrar: true`). Cevap yoksa (önceki deneme yarıda kaldıysa)
+   işleme devam edilir; yeni bir `GELEN` satırı açılmaz.
+4. Son 20 mesaj bağlam olarak yüklenir (RLS: yalnız bu müşteri).
+5. LLM döngüsü: en fazla 4 tur, toplam **60 saniye** bütçe, en fazla 10 araç
+   çağrısı. Araç çağrıları HTTP ile çalıştırılır, sonuç modele
+   `functionResponse` olarak verilir. Araç hatası (4xx) turu düşürmez; model
+   hatayı görüp alternatif üretir.
+6. Cevap `GIDEN` olarak yazılır ve döner.
+
+### Hata yanıtları
+
+| Kod | HTTP | Koşul |
+|---|---|---|
+| `GECERSIZ_PARAMETRE` | 400 | `metin` boş/çok uzun; gövde JSON değil |
+| `KIMLIK_YOK` | 401 | Telefon başlığı yok/geçersiz |
+| `LLM_UNAVAILABLE` | 503 | `GEMINI_API_KEY` yok, model hatası, 6 turda cevap yok |
+
+`LLM_UNAVAILABLE` durumunda köprü kendi yedek mesajını göndermelidir
+("Şu an yanıt veremiyorum, birazdan tekrar deneyin.").
+
+### Veritabanı
+
+```sql
+-- Gelen (LLM'den önce, ayrı commit). kaynak_id varsa tekrar koruması:
+INSERT INTO mesaj (musteri_id, yon, icerik, kaynak_id)
+VALUES ($1, 'GELEN', $2, $4)
+ON CONFLICT (kaynak_id) WHERE kaynak_id IS NOT NULL DO NOTHING;
+
+-- Bağlam
+SELECT yon, icerik FROM mesaj
+ WHERE musteri_id = fn_aktif_musteri_id()
+ ORDER BY zaman DESC, mesaj_id DESC LIMIT 20;
+
+-- Giden
+INSERT INTO mesaj (musteri_id, yon, icerik) VALUES ($1, 'GIDEN', $3);
+```
+
+- RLS: `p_mesaj_bot_ekle` / `p_mesaj_bot_oku` yalnız kendi müşterisi.
+- **Ara commit sonrası `SET LOCAL app.musteri_telefon` yeniden yazılır**:
+  `SET LOCAL` transaction kapsamlıdır, commit kimliği sıfırlar; yeniden
+  yazılmazsa giden mesaj INSERT'i RLS'e takılır.
+- `mesaj.kaynak_id` (bkz. `db/450_mesaj_kaynak_id.sql`): kısmi UNIQUE indeks.
+  `ON CONFLICT` bu indekste ancak `WHERE kaynak_id IS NOT NULL` koşuluyla çalışır.
+
+### LLM ayarları (ortam değişkenleri)
+
+| Değişken | Varsayılan | Not |
+|---|---|---|
+| `GEMINI_API_KEY` | — | Yoksa `/bot/mesaj` 503 döner (diğer uçlar çalışır) |
+| `GEMINI_MODEL` | `gemini-2.0-flash` | |
+| `GEMINI_URL` | `https://generativelanguage.googleapis.com/v1beta` | Testlerde stub'a çevrilir |
+| `KENDI_URL` | `http://127.0.0.1:HTTP_PORT` | Araçların çağrıldığı taban adres |
+
+Sistem promptu: `backend/src/main/resources/sistem-promptu.md` (bugünün tarihi
+her istekte yerleştirilir).
+
+### LLM araçları
+
+| Araç | HTTP |
+|---|---|
+| `sube_listele` | `GET /bot/sube` |
+| `musait_slotlar` | `GET /bot/slot` |
+| `arac_listele` | `GET /bot/arac` |
+| `randevularim` | `GET /bot/randevu` |
+| `randevu_olustur` | `POST /bot/randevu` |
+| `randevu_iptal` | `POST /bot/randevu/{id}/iptal` |
+| `musteri_bilgisi` | `POST /bot/musteri` |

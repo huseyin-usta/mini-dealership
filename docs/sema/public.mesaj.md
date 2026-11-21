@@ -9,6 +9,7 @@
 | yon | varchar(6) |  | false |  |  |  |
 | zaman | timestamp with time zone | now() | false |  |  |  |
 | icerik | text |  | false |  |  |  |
+| kaynak_id | varchar(128) |  | true |  |  | Dış kaynak mesaj kimliği (ör. WhatsApp wamid); aynı kimlik ikinci kez işlenmez. |
 
 ## Constraints
 
@@ -23,6 +24,7 @@
 | Name | Definition |
 | ---- | ---------- |
 | mesaj_pkey | CREATE UNIQUE INDEX mesaj_pkey ON public.mesaj USING btree (mesaj_id) |
+| uq_mesaj_kaynak_id | CREATE UNIQUE INDEX uq_mesaj_kaynak_id ON public.mesaj USING btree (kaynak_id) WHERE (kaynak_id IS NOT NULL) |
 | idx_mesaj_musteri_zaman | CREATE INDEX idx_mesaj_musteri_zaman ON public.mesaj USING btree (musteri_id, zaman DESC) |
 | idx_mesaj_zaman | CREATE INDEX idx_mesaj_zaman ON public.mesaj USING btree (zaman) INCLUDE (musteri_id, yon) |
 

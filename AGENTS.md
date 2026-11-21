@@ -29,15 +29,16 @@ session'lara ve ekip arkadaşına bağlam aktarımı içindir.
   - **Analitik sorgular ve indeks analizi** (`db/500_indeksler.sql`,
     `docs/analiz/sorgular.sql`, `docs/analiz/indeks-analizi.md`): 7 sorgu ve 13 indeks
     `EXPLAIN (ANALYZE, BUFFERS)` ile ölçüldü.
-- **Bot API (backend)**: `docs/api/bot-sozlesmesi.md` sözleşmesi; `GET /bot/sube`,
-  `GET /bot/slot`, `GET /bot/arac`, `POST /bot/randevu`, `GET /bot/randevu` ve
-  `POST /bot/musteri` ve `POST /bot/randevu/{id}/iptal` uçtan uca tamam
-  (sözleşme + Java + test). Köprü↔backend arasında `X-Bot-Token` (BOT_TOKEN,
-  ≥32 karakter) zorunlu; varsayılan bind `127.0.0.1` (`BIND_ADRESI`). Kalan bot
-  ucu: `POST /bot/mesaj` (giriş noktası).
+- **Bot API (backend) — tamamlandı.** `docs/api/bot-sozlesmesi.md`: `GET /bot/sube`,
+  `GET /bot/slot`, `GET /bot/arac`, `POST /bot/randevu`, `GET /bot/randevu`,
+  `POST /bot/randevu/{id}/iptal`, `POST /bot/musteri` ve `POST /bot/mesaj`
+  (LLM giriş noktası). Köprü↔backend arasında `X-Bot-Token` (BOT_TOKEN, ≥32 karakter)
+  zorunlu; varsayılan bind `127.0.0.1` (`BIND_ADRESI`). Kalan iş: WhatsApp köprüsü,
+  panel API'leri, panel ve Docker Compose.
 - Test: `scripts/test-db.sh` 23 senaryo (trigger, view, rol/RLS, müşteri izolasyonu);
-  `scripts/test-bot-http.sh` 181 HTTP senaryosu (gerçek Postgres + gerçek JAR; token/kimlik/
-  müsaitlik/stok/randevu oluşturma-listeleme-iptal/hatalar, eşzamanlılık dahil). Hepsi geçiyor.
+  `scripts/test-bot-http.sh` 195 HTTP senaryosu (gerçek Postgres + gerçek JAR + sahte Gemini
+  stub'ı; token/kimlik/müsaitlik/stok/randevu/LLM döngüsü/idempotency/hatalar, eşzamanlılık
+  dahil). Hepsi geçiyor.
 - Şema görselleştirme: `scripts/sema-diyagram.sh` (tbls + geçici Docker Postgres)
   → `docs/sema/` çıktısı güncel şemayla (tablolar, view'lar, trigger'lar, indeksler) yenilendi.
 - Kalan işler: bot API'nin kalan uçları, WhatsApp köprüsü, panel API'leri, panel (HTML/JS, Şevda), Docker Compose.
@@ -45,7 +46,11 @@ session'lara ve ekip arkadaşına bağlam aktarımı içindir.
   servise girişte aracın müşteriye ait olduğunu **denetlemiyor**; tek savunma
   Java tarafı (`RandevuHandler` + `SlotHandler`). DDL mühürlü olduğu için bu turda
   dokunulmadı; trigger'a sahiplik + şube kuralı eklenmesi final rapor öncesi
-  değerlendirilecek (mevcut 146 test API'yi koruyor).
+  değerlendirilecek (mevcut 195 test API'yi koruyor).
+- **LLM backend'de** (`POST /bot/mesaj`): Gemini + araç döngüsü Java'da; araçlar kendi
+  HTTP uçlarına `KENDI_URL` üzerinden çağrılır. `GEMINI_API_KEY` yoksa yalnız bu uç 503
+  döner. Sistem promptu `backend/src/main/resources/sistem-promptu.md`.
+  Idempotency `mesaj.kaynak_id` (`db/450`) ile; köprü wamid göndermeli.
 - **`musteri.ad/soyad` artık NULL olabilir** (`db/440_musteri_bilgisi.sql`):
   kimlik telefondur, isim sonradan öğrenilir. Bu dosya ayrıca bot'a
   `UPDATE (ad, soyad)` yetkisi ve RLS UPDATE politikası ekler. `v_rapor_randevu`

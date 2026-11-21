@@ -13,7 +13,7 @@
 | [public.versiyon](public.versiyon.md) | 5 |  | BASE TABLE |
 | [public.versiyon_ozellik](public.versiyon_ozellik.md) | 3 |  | BASE TABLE |
 | [public.musteri](public.musteri.md) | 5 |  | BASE TABLE |
-| [public.mesaj](public.mesaj.md) | 5 |  | BASE TABLE |
+| [public.mesaj](public.mesaj.md) | 6 |  | BASE TABLE |
 | [public.arac](public.arac.md) | 8 |  | BASE TABLE |
 | [public.stok_hareketi](public.stok_hareketi.md) | 6 |  | BASE TABLE |
 | [public.randevu_turu](public.randevu_turu.md) | 5 |  | BASE TABLE |

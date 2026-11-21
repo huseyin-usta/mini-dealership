@@ -248,33 +248,36 @@
 <!-- public.mesaj -->
 <g id="node10" class="node">
 <title>public.mesaj</title>
-<polygon fill="#efefef" stroke="none" points="2069.2,-867.4 2069.2,-903 2299.17,-903 2299.17,-867.4 2069.2,-867.4"/>
-<polygon fill="none" stroke="black" points="2069.2,-867.4 2069.2,-903 2299.17,-903 2299.17,-867.4 2069.2,-867.4"/>
-<text text-anchor="start" x="2076.2" y="-880.8" font-family="Arial Bold" font-size="18.00">public.mesaj</text>
-<text text-anchor="start" x="2167.68" y="-880.8" font-family="Arial" font-size="14.00">    </text>
-<text text-anchor="start" x="2198.79" y="-880.8" font-family="Arial" font-size="14.00" fill="#666666">[BASE TABLE]</text>
-<polygon fill="none" stroke="black" points="2069.2,-836.6 2069.2,-867.4 2299.17,-867.4 2299.17,-836.6 2069.2,-836.6"/>
-<text text-anchor="start" x="2076.2" y="-848.8" font-family="Arial" font-size="14.00">mesaj_id </text>
-<text text-anchor="start" x="2136.12" y="-848.8" font-family="Arial" font-size="14.00" fill="#666666">[bigint]</text>
-<polygon fill="none" stroke="black" points="2069.2,-805.8 2069.2,-836.6 2299.17,-836.6 2299.17,-805.8 2069.2,-805.8"/>
-<text text-anchor="start" x="2076.2" y="-818" font-family="Arial" font-size="14.00">musteri_id </text>
-<text text-anchor="start" x="2144.67" y="-818" font-family="Arial" font-size="14.00" fill="#666666">[integer]</text>
-<polygon fill="none" stroke="black" points="2069.2,-775 2069.2,-805.8 2299.17,-805.8 2299.17,-775 2069.2,-775"/>
-<text text-anchor="start" x="2076.2" y="-787.2" font-family="Arial" font-size="14.00">yon </text>
-<text text-anchor="start" x="2102.66" y="-787.2" font-family="Arial" font-size="14.00" fill="#666666">[varchar(6)]</text>
-<polygon fill="none" stroke="black" points="2069.2,-744.2 2069.2,-775 2299.17,-775 2299.17,-744.2 2069.2,-744.2"/>
-<text text-anchor="start" x="2076.2" y="-756.4" font-family="Arial" font-size="14.00">zaman </text>
-<text text-anchor="start" x="2122.11" y="-756.4" font-family="Arial" font-size="14.00" fill="#666666">[timestamp with time zone]</text>
-<polygon fill="none" stroke="black" points="2069.2,-713.4 2069.2,-744.2 2299.17,-744.2 2299.17,-713.4 2069.2,-713.4"/>
-<text text-anchor="start" x="2076.2" y="-725.6" font-family="Arial" font-size="14.00">icerik </text>
-<text text-anchor="start" x="2112.76" y="-725.6" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
+<polygon fill="#efefef" stroke="none" points="2069.2,-882.8 2069.2,-918.4 2299.17,-918.4 2299.17,-882.8 2069.2,-882.8"/>
+<polygon fill="none" stroke="black" points="2069.2,-882.8 2069.2,-918.4 2299.17,-918.4 2299.17,-882.8 2069.2,-882.8"/>
+<text text-anchor="start" x="2076.2" y="-896.2" font-family="Arial Bold" font-size="18.00">public.mesaj</text>
+<text text-anchor="start" x="2167.68" y="-896.2" font-family="Arial" font-size="14.00">    </text>
+<text text-anchor="start" x="2198.79" y="-896.2" font-family="Arial" font-size="14.00" fill="#666666">[BASE TABLE]</text>
+<polygon fill="none" stroke="black" points="2069.2,-852 2069.2,-882.8 2299.17,-882.8 2299.17,-852 2069.2,-852"/>
+<text text-anchor="start" x="2076.2" y="-864.2" font-family="Arial" font-size="14.00">mesaj_id </text>
+<text text-anchor="start" x="2136.12" y="-864.2" font-family="Arial" font-size="14.00" fill="#666666">[bigint]</text>
+<polygon fill="none" stroke="black" points="2069.2,-821.2 2069.2,-852 2299.17,-852 2299.17,-821.2 2069.2,-821.2"/>
+<text text-anchor="start" x="2076.2" y="-833.4" font-family="Arial" font-size="14.00">musteri_id </text>
+<text text-anchor="start" x="2144.67" y="-833.4" font-family="Arial" font-size="14.00" fill="#666666">[integer]</text>
+<polygon fill="none" stroke="black" points="2069.2,-790.4 2069.2,-821.2 2299.17,-821.2 2299.17,-790.4 2069.2,-790.4"/>
+<text text-anchor="start" x="2076.2" y="-802.6" font-family="Arial" font-size="14.00">yon </text>
+<text text-anchor="start" x="2102.66" y="-802.6" font-family="Arial" font-size="14.00" fill="#666666">[varchar(6)]</text>
+<polygon fill="none" stroke="black" points="2069.2,-759.6 2069.2,-790.4 2299.17,-790.4 2299.17,-759.6 2069.2,-759.6"/>
+<text text-anchor="start" x="2076.2" y="-771.8" font-family="Arial" font-size="14.00">zaman </text>
+<text text-anchor="start" x="2122.11" y="-771.8" font-family="Arial" font-size="14.00" fill="#666666">[timestamp with time zone]</text>
+<polygon fill="none" stroke="black" points="2069.2,-728.8 2069.2,-759.6 2299.17,-759.6 2299.17,-728.8 2069.2,-728.8"/>
+<text text-anchor="start" x="2076.2" y="-741" font-family="Arial" font-size="14.00">icerik </text>
+<text text-anchor="start" x="2112.76" y="-741" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
+<polygon fill="none" stroke="black" points="2069.2,-698 2069.2,-728.8 2299.17,-728.8 2299.17,-698 2069.2,-698"/>
+<text text-anchor="start" x="2076.2" y="-710.2" font-family="Arial" font-size="14.00">kaynak_id </text>
+<text text-anchor="start" x="2143.13" y="-710.2" font-family="Arial" font-size="14.00" fill="#666666">[varchar(128)]</text>
 </g>
 <!-- public.mesaj&#45;&gt;public.musteri -->
 <g id="edge6" class="edge">
 <title>public.mesaj:musteri_id&#45;&gt;public.musteri:musteri_id</title>
-<path fill="none" stroke="black" d="M2058.11,-820.4C2005.18,-811.32 2040.38,-726.72 2069.2,-670.2 2107.71,-594.69 2184.18,-632.63 2222.84,-557.2 2241.94,-519.94 2265.71,-463 2223.84,-463"/>
-<polygon fill="black" stroke="black" points="2057.9,-820.38 2067.51,-825.66 2063.22,-820.81 2067.53,-821.15 2067.53,-821.15 2067.53,-821.15 2063.22,-820.81 2068.22,-816.69 2057.9,-820.38"/>
-<text text-anchor="start" x="1777.82" y="-831.2" font-family="Arial" font-size="10.00">FOREIGN KEY (musteri_id) REFERENCES musteri(musteri_id)</text>
+<path fill="none" stroke="black" d="M2058.05,-835.94C1991.23,-826.7 2031.85,-722.33 2069.2,-654.8 2108.35,-584.01 2183.51,-627.89 2222.84,-557.2 2243.2,-520.61 2265.71,-463 2223.84,-463"/>
+<polygon fill="black" stroke="black" points="2057.89,-835.93 2067.57,-841.07 2063.21,-836.28 2067.53,-836.56 2067.53,-836.56 2067.53,-836.56 2063.21,-836.28 2068.16,-832.09 2057.89,-835.93"/>
+<text text-anchor="start" x="1777.82" y="-846.6" font-family="Arial" font-size="10.00">FOREIGN KEY (musteri_id) REFERENCES musteri(musteri_id)</text>
 </g>
 <!-- public.arac -->
 <g id="node11" class="node">
@@ -314,7 +317,7 @@
 <title>public.arac:sube_id&#45;&gt;public.sube:sube_id</title>
 <path fill="none" stroke="black" d="M1860.76,-831.19C1897.08,-783.2 1895.53,-432.2 1853.67,-432.2"/>
 <polygon fill="black" stroke="black" points="1860.9,-831.1 1850.04,-832.61 1856.39,-833.94 1852.72,-836.24 1852.72,-836.24 1852.72,-836.24 1856.39,-833.94 1854.83,-840.23 1860.9,-831.1"/>
-<text text-anchor="start" x="1859.15" y="-846.6" font-family="Arial" font-size="10.00">FOREIGN KEY (sube_id) REFERENCES sube(sube_id)</text>
+<text text-anchor="start" x="1793.13" y="-820.6" font-family="Arial" font-size="10.00">FOREIGN KEY (sube_id) REFERENCES sube(sube_id)</text>
 </g>
 <!-- public.arac&#45;&gt;public.versiyon -->
 <g id="edge8" class="edge">
@@ -328,7 +331,7 @@
 <title>public.arac:musteri_id&#45;&gt;public.musteri:musteri_id</title>
 <path fill="none" stroke="black" d="M1862.19,-679.82C1905.95,-654.4 1906.08,-463 1956.52,-463"/>
 <polygon fill="black" stroke="black" points="1862.11,-679.84 1851.28,-678.17 1856.97,-681.27 1852.8,-682.42 1852.8,-682.42 1852.8,-682.42 1856.97,-681.27 1853.68,-686.85 1862.11,-679.84"/>
-<text text-anchor="start" x="1859.15" y="-666.6" font-family="Arial" font-size="10.00">FOREIGN KEY (musteri_id) REFERENCES musteri(musteri_id)</text>
+<text text-anchor="start" x="1784.81" y="-666.6" font-family="Arial" font-size="10.00">FOREIGN KEY (musteri_id) REFERENCES musteri(musteri_id)</text>
 </g>
 <!-- public.stok_hareketi -->
 <g id="node12" class="node">
