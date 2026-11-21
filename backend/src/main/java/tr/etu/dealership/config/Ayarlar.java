@@ -13,6 +13,11 @@ package tr.edu.etu.dealership.config;
  * BOT_TOKEN    köprü ↔ backend paylaşılan sırrı         (zorunlu)
  * BIND_ADRESI  dinlenecek arayüz (varsayılan 127.0.0.1)
  * HTTP_PORT    (varsayılan 8080)
+ * GEMINI_API_KEY  LLM anahtarı; yoksa /bot/mesaj 503 döner (zorunlu değil)
+ * GEMINI_MODEL    (varsayılan gemini-2.0-flash)
+ * GEMINI_URL      (varsayılan https://generativelanguage.googleapis.com/v1beta)
+ * KENDI_URL       backend'in kendi adresi; LLM araçları buraya çağrılır
+ *                 (varsayılan http://127.0.0.1:HTTP_PORT)
  * </pre>
  *
  * <p>Güvenli varsayılan: yalnızca yerel arayüz. Docker'da köprü ayrı bir
@@ -29,10 +34,16 @@ public final class Ayarlar {
     private final String botToken;
     private final String bindAdresi;
     private final int httpPort;
+    private final String geminiApiKey;
+    private final String geminiModel;
+    private final String geminiUrl;
+    private final String kendiUrl;
 
     private Ayarlar(String dbHost, int dbPort, String dbName,
                     String botDbUser, String botDbPass, String botToken,
-                    String bindAdresi, int httpPort) {
+                    String bindAdresi, int httpPort,
+                    String geminiApiKey, String geminiModel,
+                    String geminiUrl, String kendiUrl) {
         this.dbHost = dbHost;
         this.dbPort = dbPort;
         this.dbName = dbName;
@@ -41,10 +52,15 @@ public final class Ayarlar {
         this.botToken = botToken;
         this.bindAdresi = bindAdresi;
         this.httpPort = httpPort;
+        this.geminiApiKey = geminiApiKey;
+        this.geminiModel = geminiModel;
+        this.geminiUrl = geminiUrl;
+        this.kendiUrl = kendiUrl;
     }
 
     /** Ortam değişkenlerinden ayarları okur; zorunlu alanlar eksikse açık hata verir. */
     public static Ayarlar ortamdan() {
+        int httpPort = sayi("HTTP_PORT", "8080");
         return new Ayarlar(
                 env("DB_HOST", "localhost"),
                 sayi("DB_PORT", "5432"),
@@ -53,7 +69,11 @@ public final class Ayarlar {
                 zorunlu("BOT_DB_PASS"),
                 gizli("BOT_TOKEN", 32),
                 env("BIND_ADRESI", "127.0.0.1"),
-                sayi("HTTP_PORT", "8080")
+                httpPort,
+                env("GEMINI_API_KEY", null),
+                env("GEMINI_MODEL", "gemini-2.0-flash"),
+                env("GEMINI_URL", "https://generativelanguage.googleapis.com/v1beta"),
+                env("KENDI_URL", "http://127.0.0.1:" + httpPort)
         );
     }
 
@@ -104,4 +124,8 @@ public final class Ayarlar {
     public String botToken() { return botToken; }
     public String bindAdresi() { return bindAdresi; }
     public int httpPort() { return httpPort; }
+    public String geminiApiKey() { return geminiApiKey; }
+    public String geminiModel() { return geminiModel; }
+    public String geminiUrl() { return geminiUrl; }
+    public String kendiUrl() { return kendiUrl; }
 }

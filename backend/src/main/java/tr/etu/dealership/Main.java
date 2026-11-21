@@ -6,9 +6,12 @@ import org.slf4j.LoggerFactory;
 import tr.edu.etu.dealership.config.Ayarlar;
 import tr.edu.etu.dealership.db.Veritabani;
 import tr.edu.etu.dealership.web.AracHandler;
+import tr.edu.etu.dealership.bot.BotAraclari;
+import tr.edu.etu.dealership.bot.GeminiIstemci;
 import tr.edu.etu.dealership.web.BotTokeni;
 import tr.edu.etu.dealership.web.MusteriHandler;
 import tr.edu.etu.dealership.web.RandevuHandler;
+import tr.edu.etu.dealership.web.MesajHandler;
 import tr.edu.etu.dealership.web.RandevuIptalHandler;
 import tr.edu.etu.dealership.web.HttpYardimci;
 import tr.edu.etu.dealership.web.SlotHandler;
@@ -58,6 +61,14 @@ public final class Main {
                 randevuIptalHandler.handle(ex);
             }
         });
+        // LLM: köprü mesajı buraya bırakır; backend kendi API'sini araç olarak çağırır.
+        GeminiIstemci gemini = new GeminiIstemci(ayarlar);
+        BotAraclari araclar = new BotAraclari(ayarlar.kendiUrl(), ayarlar.botToken());
+        if (!gemini.hazirMi()) {
+            LOG.warn("GEMINI_API_KEY tanımlı değil: /bot/mesaj 503 dönecek");
+        }
+        sunucu.createContext("/bot/mesaj", new MesajHandler(db, token, gemini, araclar));
+
         sunucu.createContext("/saglik", HttpYardimci.saglik(db));
 
         sunucu.start();
