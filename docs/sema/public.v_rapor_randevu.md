@@ -24,7 +24,7 @@ CREATE VIEW v_rapor_randevu AS (
     mo.ad AS model_adi,
     ve.paket_adi,
     r.musteri_id,
-    ((fn_maskele_ad((mu.ad)::text) || ' '::text) || fn_maskele_ad((mu.soyad)::text)) AS musteri,
+    NULLIF(concat_ws(' '::text, fn_maskele_ad((mu.ad)::text), fn_maskele_ad((mu.soyad)::text)), ''::text) AS musteri,
     fn_maskele_telefon((mu.telefon)::text) AS musteri_telefon
    FROM (((((((randevu r
      JOIN randevu_turu rt ON (((rt.tur_kodu)::text = (r.tur_kodu)::text)))

@@ -106,6 +106,7 @@ kontrolü içindir) ve yalnızca `ok` / `db erişilemiyor` döndürür. Diğer y
 | 5 | `GET /bot/randevu` | `randevularim` | Müşterinin randevu geçmişi |
 | 6 | `POST /bot/randevu/{id}/iptal` | `randevu_iptal` | Randevu iptali |
 | 7 | `POST /bot/mesaj` | — | Köprünün giriş noktası (LLM tool'u değil) |
+| 8 | `POST /bot/musteri` | `musteri_bilgisi` | Müşterinin ad/soyadını yazar (öğrendikçe) |
 
 ---
 
@@ -698,6 +699,224 @@ SELECT a.vin, md.ad, v.paket_adi, a.renk, a.plaka
       "sehir":   { "type": "string",  "description": "Şehir adı (ör. Ankara). sube_id ile birlikte kullanılamaz." },
       "sube_id": { "type": "integer", "description": "Şube kimliği. sehir ile birlikte kullanılamaz." },
       "kapsam":  { "type": "string",  "enum": ["benim"], "description": "Yalnızca müşterinin kendi araçlarını listeler." }
+    }
+  }
+}
+```
+
+---
+
+## 4. `POST /bot/randevu`
+
+WhatsApp üzerinden randevu oluşturur. **Çalışanı ve aracı sistem atar**; LLM
+kimseyi seçmez. Randevu `kaynak = 'WHATSAPP'` ve `durum = 'PLANLANDI'` olarak açılır
+(bu, `randevu` tablosundaki RLS politikasının şartıdır).
+
+### İstek
+
+```json
+{
+  "sube_id": 1,
+  "tur_kodu": "TEST_SURUSU",
+  "tarih": "2026-11-28",
+  "baslangic": "10:00",
+  "model": "Ioniq 5",
+  "ad": "Ali",
+  "soyad": "Veli"
+}
+```
+
+| Alan | Tip | Zorunlu | Açıklama |
+|---|---|---|---|
+| `sube_id` | integer | ✅ | Şube |
+| `tur_kodu` | string | ✅ | Randevu türü |
+| `tarih` | string | ✅ | `YYYY-MM-DD`, bugün–21 gün |
+| `baslangic` | string | ✅ | `HH:MM`; türün saat penceresinde olmalı |
+| `model` | string | ❌ | Yalnız araç gerektiren türlerde. Verilirse o modelden atanır; boş araç yoksa `ARAC_YOK` + mevcut modeller |
+| `ad`, `soyad` | string | ❌ | Verilirse müşteri kaydına yazılır/güncellenir; kayıt yoksa telefonla oluşturulur |
+
+**Kimlik gövdeden gelmez**: müşteri `X-Musteri-Telefon` başlığından belirlenir.
+
+### Atama kuralları
+
+**Çalışan:** şubede + aktif + doğru departman + yetkinliği o gün geçerli + o saatte
+boş olanlar arasından **son 7 günün (bugün dahil) randevu sayısı en az olan**.
+Eşitlikte `calisan_id` küçük olan seçilir (deterministik). Sayaç `v_dolu_slot`
+view'ından okunur (bot `randevu` tablosunda başkalarının satırlarını göremez).
+
+**Araç:** türün izin verdiği kümeden, o saatte boş olan ilk araç (`vin` sırası):
+
+| Tür | Aday kümesi |
+|---|---|
+| `TEST_SURUSU` | şubede `STOKTA` |
+| `TESLIMAT` | müşterinin kendi `SATILDI` aracı, o şubede |
+| `SERVIS_TESLIM` | müşterinin bu şubede açık ve `TESLIME_HAZIR` kaydı |
+| `PERIYODIK_BAKIM`, `SERVIS_GIRIS` | müşterinin kendi `SATILDI` aracı |
+| `ARAC_INCELEME`, `SATIN_ALIM` | araç atanmaz (`model` gönderilirse 400) |
+
+**Çakışma kilitle önlenmez.** Aynı anda gelen iki istekten biri veritabanındaki
+`EXCLUDE` kısıtına takılır; bu durum `409 SLOT_DOLU` olarak döner (500 değil).
+Kazananı veritabanı belirler; kilit yoktur.
+
+### Başarılı yanıt — `201 Created`
+
+```json
+{
+  "ok": true,
+  "veri": {
+    "randevu_id": 4211,
+    "musteri_id": 12,
+    "sube": { "sube_id": 1, "sehir": "Ankara", "ad": "Çankaya" },
+    "tur_kodu": "TEST_SURUSU",
+    "tarih": "2026-11-28",
+    "baslangic": "10:00",
+    "bitis": "11:00",
+    "arac": { "vin": "VIN00000000000001", "model": "Ioniq 5",
+              "paket": "Advance", "renk": "Beyaz" },
+    "bilgi": "Randevunuz oluşturuldu: 2026-11-28 10:00, Çankaya (Ankara)."
+  }
+}
+```
+
+- Çalışan bilgisi **dönmez**: bot `calisan.ad` kolonunu okuyamaz (yetki yok).
+- `arac` yalnız araç atanan türlerde bulunur.
+- `bitis` = `baslangic` + türün süresi.
+
+### Hata yanıtları
+
+| Kod | HTTP | `kullaniciya_goster` | Koşul |
+|---|---|---|---|
+| `SUBE_YOK`, `TUR_YOK` | 404 | true | Bilinmeyen şube/tür |
+| `GECERSIZ_TARIH` | 400 | true | `YYYY-MM-DD` değil |
+| `GECMIS_TARIH` | 400 | true | Bugünden önce |
+| `COK_UZAK_TARIH` | 400 | true | 21 günden fazla |
+| `GECERSIZ_SAAT` | 400 | true | `HH:MM` değil veya türün penceresinde değil |
+| `SLOT_DOLU` | 409 | true | Uygun/boş çalışan veya araç yok; `detay.sebep`: `CALISAN_YOK` \| `ARAC_YOK` |
+| `ARAC_YOK` | 404 | true | İki durum: (a) `model` istendi ama o saatte o model boş değil — `detay.mevcut_modeller` dolu; (b) bu tür için hiç uygun araç yok (ör. müşterinin kayıtlı aracı yok) |
+| `GECERSIZ_PARAMETRE` | 400 | true | `model` araç gerektirmeyen türde; eksik/bozuk alan; gövde JSON değil |
+
+### Veritabanı
+
+```sql
+-- Müşteri kaydı (yoksa telefonla açılır; ad/soyad sonradan öğrenilebilir)
+INSERT INTO musteri (telefon, ad, soyad)
+VALUES (current_setting('app.musteri_telefon', true), $1, $2);
+
+-- Çalışan seçimi: son 7 günün yükü en az olan
+SELECT c.calisan_id
+  FROM calisan c, tur t
+ WHERE c.sube_id = $1 AND c.aktif_mi AND c.departman = t.departman
+   AND NOT EXISTS (SELECT 1 FROM v_dolu_slot d
+                    WHERE d.calisan_id = c.calisan_id
+                      AND tsrange(d.baslangic, d.bitis) && tsrange($2, $3))
+ ORDER BY (SELECT count(*) FROM v_dolu_slot d2
+            WHERE d2.calisan_id = c.calisan_id
+              AND d2.baslangic >= current_date - interval '6 day'
+              AND d2.baslangic <  current_date + interval '1 day') ASC,
+          c.calisan_id
+ LIMIT 1;
+
+-- Ekleme (RLS: kaynak = 'WHATSAPP' zorunlu)
+INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin,
+                     baslangic, bitis, durum, kaynak)
+VALUES ($1, $2, $3, $4, $5, $6, $7, 'PLANLANDI', 'WHATSAPP');
+```
+
+- EXCLUDE ihlali (`SQLSTATE 23P01`) → `409 SLOT_DOLU`
+- `fn_randevu_dogrula` trigger'ı süre, saat penceresi, yetkinlik ve araç kurallarını
+  ayrıca denetler (son savunma)
+
+### LLM tool tanımı
+
+```json
+{
+  "name": "randevu_olustur",
+  "description": "WhatsApp üzerinden randevu oluşturur. Çalışanı ve aracı sistem atar. Test sürüşünde müşteri belirli bir model istediyse model alanını doldur; istemediyse boş bırak. Müşteri yeni ise ad ve soyad ver (kayıt yoksa telefonla oluşturulur). SLOT_DOLU dönerse başka saat öner.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "sube_id":   { "type": "integer", "description": "Şube kimliği" },
+      "tur_kodu":  { "type": "string",  "description": "Randevu türü kodu" },
+      "tarih":     { "type": "string",  "description": "YYYY-MM-DD, bugünden en fazla 21 gün ileri" },
+      "baslangic": { "type": "string",  "description": "HH:MM; /bot/slot'tan alınan müsait saat" },
+      "model":     { "type": "string",  "description": "Yalnız araç gerektiren türlerde, müşteri belirli model istediyse" },
+      "ad":        { "type": "string",  "description": "Müşteri adı (yeni kayıt veya güncelleme)" },
+      "soyad":     { "type": "string",  "description": "Müşteri soyadı" }
+    },
+    "required": ["sube_id", "tur_kodu", "tarih", "baslangic"]
+  }
+}
+```
+
+---
+
+## 8. `POST /bot/musteri`
+
+Müşterinin ad/soyad bilgisini yazar. Bot ismi konuşma sırasında öğrendiği için
+ayrı uçtur; alanlar tek tek gönderilebilir (önce ad, sonra soyad).
+
+### İstek
+
+```json
+{ "ad": "Ali" }
+{ "soyad": "Veli" }
+{ "ad": "Ali", "soyad": "Veli" }
+```
+
+| Alan | Zorunlu | Açıklama |
+|---|---|---|
+| `ad` | ⚠️ | En az biri gerekli |
+| `soyad` | ⚠️ | En az biri gerekli |
+
+Kimlik gövdeden gelmez: `X-Musteri-Telefon` başlığından belirlenir. Kayıt yoksa
+telefonla oluşturulur (ad/soyad nullable — bkz. `db/440_musteri_bilgisi.sql`);
+varsa yalnızca verilen alanlar güncellenir.
+
+### Başarılı yanıt — `200 OK`
+
+```json
+{
+  "ok": true,
+  "veri": {
+    "musteri_id": 12,
+    "ad": "Ali",
+    "soyad": "Veli",
+    "bilgi": "Müşteri bilgisi kaydedildi."
+  }
+}
+```
+
+### Hata yanıtları
+
+| Kod | HTTP | Koşul |
+|---|---|---|
+| `GECERSIZ_PARAMETRE` | 400 | İki alan da boş; gövde JSON değil; alan metin değil |
+| `KIMLIK_YOK` | 401 | `X-Musteri-Telefon` yok/geçersiz |
+
+### Veritabanı
+
+```sql
+-- RLS: yalnızca kendi telefonunun satırı (UPDATE politikası, db/440)
+UPDATE musteri
+   SET ad    = coalesce($1, ad),
+       soyad = coalesce($2, soyad)
+ WHERE telefon = current_setting('app.musteri_telefon', true);
+```
+
+Bot `musteri` tablosunda yalnız `ad`, `soyad` kolonlarını güncelleyebilir
+(`GRANT UPDATE (ad, soyad)`); telefon ve kayıt zamanı değiştirilemez.
+
+### LLM tool tanımı
+
+```json
+{
+  "name": "musteri_bilgisi",
+  "description": "Müşterinin adını ve/veya soyadını kaydeder. Müşteri ismini söylediğinde veya hitap için sorduğunda kullan. Alanlar tek tek gönderilebilir.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "ad":    { "type": "string", "description": "Müşteri adı" },
+      "soyad": { "type": "string", "description": "Müşteri soyadı" }
     }
   }
 }

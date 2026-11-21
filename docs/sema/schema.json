@@ -683,12 +683,12 @@
         {
           "name": "ad",
           "type": "varchar(64)",
-          "nullable": false
+          "nullable": true
         },
         {
           "name": "soyad",
           "type": "varchar(64)",
-          "nullable": false
+          "nullable": true
         },
         {
           "name": "kayit_zamani",
@@ -2643,7 +2643,7 @@
           "nullable": true
         }
       ],
-      "def": "CREATE VIEW v_rapor_randevu AS (\n SELECT r.randevu_id,\n    r.baslangic,\n    r.bitis,\n    r.durum,\n    r.kaynak,\n    r.tur_kodu,\n    rt.ad AS tur_adi,\n    rt.departman,\n    s.sube_id,\n    s.sehir,\n    s.ad AS sube_adi,\n    c.calisan_id,\n    (((c.ad)::text || ' '::text) || (c.soyad)::text) AS calisan,\n    r.arac_vin,\n    mo.ad AS model_adi,\n    ve.paket_adi,\n    r.musteri_id,\n    ((fn_maskele_ad((mu.ad)::text) || ' '::text) || fn_maskele_ad((mu.soyad)::text)) AS musteri,\n    fn_maskele_telefon((mu.telefon)::text) AS musteri_telefon\n   FROM (((((((randevu r\n     JOIN randevu_turu rt ON (((rt.tur_kodu)::text = (r.tur_kodu)::text)))\n     JOIN sube s ON ((s.sube_id = r.sube_id)))\n     JOIN calisan c ON ((c.calisan_id = r.calisan_id)))\n     JOIN musteri mu ON ((mu.musteri_id = r.musteri_id)))\n     LEFT JOIN arac a ON (((a.vin)::text = (r.arac_vin)::text)))\n     LEFT JOIN versiyon ve ON ((ve.versiyon_id = COALESCE(a.versiyon_id, r.versiyon_id))))\n     LEFT JOIN model mo ON ((mo.model_id = ve.model_id)))\n)",
+      "def": "CREATE VIEW v_rapor_randevu AS (\n SELECT r.randevu_id,\n    r.baslangic,\n    r.bitis,\n    r.durum,\n    r.kaynak,\n    r.tur_kodu,\n    rt.ad AS tur_adi,\n    rt.departman,\n    s.sube_id,\n    s.sehir,\n    s.ad AS sube_adi,\n    c.calisan_id,\n    (((c.ad)::text || ' '::text) || (c.soyad)::text) AS calisan,\n    r.arac_vin,\n    mo.ad AS model_adi,\n    ve.paket_adi,\n    r.musteri_id,\n    NULLIF(concat_ws(' '::text, fn_maskele_ad((mu.ad)::text), fn_maskele_ad((mu.soyad)::text)), ''::text) AS musteri,\n    fn_maskele_telefon((mu.telefon)::text) AS musteri_telefon\n   FROM (((((((randevu r\n     JOIN randevu_turu rt ON (((rt.tur_kodu)::text = (r.tur_kodu)::text)))\n     JOIN sube s ON ((s.sube_id = r.sube_id)))\n     JOIN calisan c ON ((c.calisan_id = r.calisan_id)))\n     JOIN musteri mu ON ((mu.musteri_id = r.musteri_id)))\n     LEFT JOIN arac a ON (((a.vin)::text = (r.arac_vin)::text)))\n     LEFT JOIN versiyon ve ON ((ve.versiyon_id = COALESCE(a.versiyon_id, r.versiyon_id))))\n     LEFT JOIN model mo ON ((mo.model_id = ve.model_id)))\n)",
       "referenced_tables": [
         "public.randevu",
         "public.randevu_turu",

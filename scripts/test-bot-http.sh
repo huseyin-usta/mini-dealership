@@ -29,7 +29,8 @@ trap temizle EXIT
 
 if [ "$DERLEME_ATLA" = 0 ]; then
   echo "==> Backend derleniyor..."
-  ( cd backend && ./mvnw -q package -DskipTests )
+  # clean: artımlı derleme bazen değişikliği kaçırıyor; test her zaman taze JAR görsün.
+  ( cd backend && ./mvnw -q clean package -DskipTests )
 fi
 [ -f "$JAR" ] || { echo "HATA: $JAR yok; önce derleyin" >&2; exit 1; }
 
@@ -735,6 +736,249 @@ bekle "Kimliksiz istek 401" 401 '"kod":"KIMLIK_YOK"' \
 bekle "Geçersiz kimlik 401" 401 '"kod":"KIMLIK_YOK"' \
   -H "$TOK" -H 'X-Musteri-Telefon: abc' "$TABAN/bot/sube"
 bekle "Sağlık kontrolü" 200 'ok' "$TABAN/saglik"
+
+echo "--- POST /bot/musteri ---"
+GOV_M='{"ad":"Yeni"}'
+GOV_MS='{"ad":"Yeni","soyad":"Musteri"}'
+bekle "Musteri: yeni kayit (yalniz ad)" 200 '"ad":"Yeni"' \
+  -X POST -H "$TOK" -H 'X-Musteri-Telefon: +905550009900' \
+  -H 'Content-Type: application/json' -d "$GOV_M" "$TABAN/bot/musteri"
+MID1=$(curl -s -X POST -H "$TOK" -H 'X-Musteri-Telefon: +905550009900' \
+  -H 'Content-Type: application/json' -d '{"soyad":"Musteri"}' "$TABAN/bot/musteri" \
+  | sed -n 's/.*"musteri_id":\([0-9]*\).*/\1/p')
+if [ -n "$MID1" ]; then
+  echo "[PASS] Musteri: soyad sonradan eklendi (ayni kayit, id=$MID1)"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Musteri: soyad guncellemesi basarisiz"; KALAN=$((KALAN + 1))
+fi
+bekle "Musteri: alan yok -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -X POST -H "$TOK" -H "$TEL" -H 'Content-Type: application/json' -d '{}' \
+  "$TABAN/bot/musteri"
+bekle "Musteri: GET -> 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/musteri"
+bekle "Musteri: bozuk JSON -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -X POST -H "$TOK" -H "$TEL" -H 'Content-Type: application/json' -d '{bozuk' \
+  "$TABAN/bot/musteri"
+bekle "Musteri: token yok -> 401" 401 '"kod":"YETKISIZ_ISTEK"' \
+  -X POST -H "$TEL" -H 'Content-Type: application/json' -d "$GOV_MS" \
+  "$TABAN/bot/musteri"
+
+echo "--- POST /bot/randevu ---"
+# GUN2 10:00: kapasite testi icin temiz saat (slot testleri bu saati kullanmiyor)
+R1=$(curl -s -X POST -H "$TOK" -H "$TEL_S" -H 'Content-Type: application/json' \
+  -d "{\"sube_id\":1,\"tur_kodu\":\"TEST_SURUSU\",\"tarih\":\"$GUN2\",\"baslangic\":\"10:00\",\"model\":\"Ioniq 5\"}" \
+  "$TABAN/bot/randevu")
+if printf '%s' "$R1" | grep -qF '"randevu_id"' \
+   && printf '%s' "$R1" | grep -qF '"model":"Ioniq 5"' \
+   && printf '%s' "$R1" | grep -qF '"arac"'; then
+  echo "[PASS] Randevu: TEST_SURUSU olusturuldu, istenen model atandi, arac dondu"
+  GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Randevu: TEST_SURUSU olusmadi"; echo "       $R1"; KALAN=$((KALAN + 1))
+fi
+R1ID=$(printf '%s' "$R1" | sed -n 's/.*"randevu_id":\([0-9]*\).*/\1/p')
+MID_R=$(printf '%s' "$R1" | sed -n 's/.*"musteri_id":\([0-9]*\).*/\1/p')
+# Ayni musteri ayni saatte ikinci randevu alamaz (musteri EXCLUDE)
+bekle "Randevu: ayni musteri ayni saat -> 409" 409 '"kod":"SLOT_DOLU"' \
+  -X POST -H "$TOK" -H "$TEL_S" -H 'Content-Type: application/json' \
+  -d "{\"sube_id\":1,\"tur_kodu\":\"TEST_SURUSU\",\"tarih\":\"$GUN2\",\"baslangic\":\"10:00\"}" \
+  "$TABAN/bot/randevu"
+# Ikinci ve ucuncu musteri ayni saatte farkli calisanlara atanmali
+R2=$(curl -s -X POST -H "$TOK" -H "$TEL_K" -H 'Content-Type: application/json' \
+  -d "{\"sube_id\":1,\"tur_kodu\":\"TEST_SURUSU\",\"tarih\":\"$GUN2\",\"baslangic\":\"10:00\"}" \
+  "$TABAN/bot/randevu")
+R3=$(curl -s -X POST -H "$TOK" -H "$TEL_B" -H 'Content-Type: application/json' \
+  -d "{\"sube_id\":1,\"tur_kodu\":\"TEST_SURUSU\",\"tarih\":\"$GUN2\",\"baslangic\":\"10:00\"}" \
+  "$TABAN/bot/randevu")
+if printf '%s' "$R2" | grep -qF '"randevu_id"' \
+   && printf '%s' "$R3" | grep -qF '"randevu_id"' \
+   && ! printf '%s' "$R2" | grep -qF '"vin":"'"$(printf '%s' "$R1" | sed -n 's/.*"vin":"\([^"]*\)".*/\1/p')"'"'; then
+  echo "[PASS] Randevu: farkli musteriler farkli calisan/arac aldi"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Randevu: atama cakisti"; echo "       R1=$R1"; echo "       R2=$R2"; KALAN=$((KALAN + 1))
+fi
+# Dorduncu: 3 yetkin satici dolu -> CALISAN_YOK
+YANIT_4=$(curl -s -w '\n%{http_code}' -X POST -H "$TOK" \
+  -H 'X-Musteri-Telefon: +905550009933' -H 'Content-Type: application/json' \
+  -d "{\"sube_id\":1,\"tur_kodu\":\"TEST_SURUSU\",\"tarih\":\"$GUN2\",\"baslangic\":\"10:00\"}" \
+  "$TABAN/bot/randevu")
+KOD_4=$(printf '%s' "$YANIT_4" | tail -n1)
+GOV_4=$(printf '%s' "$YANIT_4" | sed '$d')
+if [ "$KOD_4" = "409" ] && printf '%s' "$GOV_4" | grep -qF '"sebep":"CALISAN_YOK"'; then
+  echo "[PASS] Randevu: tum calisanlar dolu -> 409 CALISAN_YOK"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Randevu: kapasite yaniti yanlis"; echo "       HTTP $KOD_4 $GOV_4"; KALAN=$((KALAN + 1))
+fi
+# Model yok: Tucson stokta degil -> 404 + mevcut modeller
+YANIT_MD=$(curl -s -w '\n%{http_code}' -X POST -H "$TOK" -H "$TEL_S" \
+  -H 'Content-Type: application/json' \
+  -d "{\"sube_id\":1,\"tur_kodu\":\"TEST_SURUSU\",\"tarih\":\"$GUN2\",\"baslangic\":\"15:00\",\"model\":\"Tucson\"}" \
+  "$TABAN/bot/randevu")
+KOD_MD=$(printf '%s' "$YANIT_MD" | tail -n1)
+GOV_MD=$(printf '%s' "$YANIT_MD" | sed '$d')
+if [ "$KOD_MD" = "404" ] && printf '%s' "$GOV_MD" | grep -qF '"kod":"ARAC_YOK"' \
+   && printf '%s' "$GOV_MD" | grep -qF '"mevcut_modeller"'; then
+  echo "[PASS] Randevu: olmayan model -> 404 + mevcut modeller"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Randevu: model yok yaniti yanlis"; echo "       HTTP $KOD_MD $GOV_MD"; KALAN=$((KALAN + 1))
+fi
+# Saat tur penceresinde degil
+bekle "Randevu: tur penceresi disi saat -> 400" 400 '"kod":"GECERSIZ_SAAT"' \
+  -X POST -H "$TOK" -H "$TEL_S" -H 'Content-Type: application/json' \
+  -d "{\"sube_id\":1,\"tur_kodu\":\"TEST_SURUSU\",\"tarih\":\"$GUN2\",\"baslangic\":\"13:00\"}" \
+  "$TABAN/bot/randevu"
+# Gecmis / cok uzak / bilinmeyen
+bekle "Randevu: gecmis tarih -> 400" 400 '"kod":"GECMIS_TARIH"' \
+  -X POST -H "$TOK" -H "$TEL_S" -H 'Content-Type: application/json' \
+  -d '{"sube_id":1,"tur_kodu":"TEST_SURUSU","tarih":"2020-01-01","baslangic":"10:00"}' \
+  "$TABAN/bot/randevu"
+bekle "Randevu: bilinmeyen sube -> 404" 404 '"kod":"SUBE_YOK"' \
+  -X POST -H "$TOK" -H "$TEL_S" -H 'Content-Type: application/json' \
+  -d "{\"sube_id\":999,\"tur_kodu\":\"TEST_SURUSU\",\"tarih\":\"$GUN2\",\"baslangic\":\"10:00\"}" \
+  "$TABAN/bot/randevu"
+bekle "Randevu: bilinmeyen tur -> 404" 404 '"kod":"TUR_YOK"' \
+  -X POST -H "$TOK" -H "$TEL_S" -H 'Content-Type: application/json' \
+  -d "{\"sube_id\":1,\"tur_kodu\":\"YOKTUR\",\"tarih\":\"$GUN2\",\"baslangic\":\"10:00\"}" \
+  "$TABAN/bot/randevu"
+bekle "Randevu: model aracsiz turde -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -X POST -H "$TOK" -H "$TEL_S" -H 'Content-Type: application/json' \
+  -d "{\"sube_id\":1,\"tur_kodu\":\"ARAC_INCELEME\",\"tarih\":\"$GUN2\",\"baslangic\":\"10:00\",\"model\":\"Ioniq 5\"}" \
+  "$TABAN/bot/randevu"
+# Bakim: kendi araci olan musteri 200, aracsiz musteri 409
+bekle "Randevu: BAKIM kendi araciyla olusur" 201 '"randevu_id"' \
+  -X POST -H "$TOK" -H "$TEL_S" -H 'Content-Type: application/json' \
+  -d "{\"sube_id\":1,\"tur_kodu\":\"PERIYODIK_BAKIM\",\"tarih\":\"$GUN2\",\"baslangic\":\"09:00\"}" \
+  "$TABAN/bot/randevu"
+YANIT_AB=$(curl -s -w '\n%{http_code}' -X POST -H "$TOK" -H "$TEL_B" \
+  -H 'Content-Type: application/json' \
+  -d "{\"sube_id\":1,\"tur_kodu\":\"PERIYODIK_BAKIM\",\"tarih\":\"$GUN2\",\"baslangic\":\"12:00\"}" \
+  "$TABAN/bot/randevu")
+KOD_AB=$(printf '%s' "$YANIT_AB" | tail -n1)
+GOV_AB=$(printf '%s' "$YANIT_AB" | sed '$d')
+if [ "$KOD_AB" = "404" ] && printf '%s' "$GOV_AB" | grep -qF '"kod":"ARAC_YOK"'; then
+  echo "[PASS] Randevu: aracsiz musteriye bakim -> 404 ARAC_YOK (saat degil, arac yok)"
+  GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Randevu: bakim arac yaniti yanlis"; echo "       HTTP $KOD_AB $GOV_AB"; KALAN=$((KALAN + 1))
+fi
+# Musteri kaydi tekrarlanmiyor: ayni telefonla ikinci kez musteri yazimi ayni id
+MID2=$(curl -s -X POST -H "$TOK" -H "$TEL_S" -H 'Content-Type: application/json' \
+  -d '{"ad":"Selin"}' "$TABAN/bot/musteri" | sed -n 's/.*"musteri_id":\([0-9]*\).*/\1/p')
+if [ -n "$MID_R" ] && [ "$MID_R" = "$MID2" ]; then
+  echo "[PASS] Randevu: musteri kaydi tekrar olusturulmuyor (id=$MID_R)"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Randevu: musteri id tutarsiz (randevu=$MID_R, musteri=$MID2)"; KALAN=$((KALAN + 1))
+fi
+bekle "Randevu: GET -> 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/randevu"
+
+echo "--- POST /bot/randevu (yeni musteri, rollback, eszamanlilik) ---"
+# Yeni telefonla basarili kayit: musteri satiri + randevu ayni transaction'da
+TN1='X-Musteri-Telefon: +905550007701'
+YENI1=$(curl -s -w '\n%{http_code}' -X POST -H "$TOK" -H "$TN1" \
+  -H 'Content-Type: application/json' \
+  -d "{\"sube_id\":1,\"tur_kodu\":\"TEST_SURUSU\",\"tarih\":\"$GUN2\",\"baslangic\":\"15:00\",\"ad\":\"Zeynep\",\"soyad\":\"Ak\"}" \
+  "$TABAN/bot/randevu")
+KOD_Y1=$(printf '%s' "$YENI1" | tail -n1)
+GOV_Y1=$(printf '%s' "$YENI1" | sed '$d')
+if [ "$KOD_Y1" = "201" ] && printf '%s' "$GOV_Y1" | grep -qF '"musteri_id"' \
+   && printf '%s' "$GOV_Y1" | grep -qF '"randevu_id"'; then
+  echo "[PASS] Randevu: yeni musteri + randevu tek transaction'da olustu"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Randevu: yeni musteri kaydi basarisiz"; echo "       HTTP $KOD_Y1 $GOV_Y1"; KALAN=$((KALAN + 1))
+fi
+# Rollback kaniti: 409 alan istekte ogrenilen ad yazilmamali
+curl -s -o /dev/null -X POST -H "$TOK" -H "$TEL_S" -H 'Content-Type: application/json' \
+  -d "{\"sube_id\":1,\"tur_kodu\":\"TEST_SURUSU\",\"tarih\":\"$GUN2\",\"baslangic\":\"10:00\",\"ad\":\"YanlisAd\"}" \
+  "$TABAN/bot/randevu"
+SELIN=$(curl -s -X POST -H "$TOK" -H "$TEL_S" -H 'Content-Type: application/json' \
+  -d '{"soyad":"Oz"}' "$TABAN/bot/musteri")
+if printf '%s' "$SELIN" | grep -qF '"ad":"Selin"' \
+   && ! printf '%s' "$SELIN" | grep -qF 'YanlisAd'; then
+  echo "[PASS] Randevu: 409 alan istek rollback edildi (ad degismedi)"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Randevu: rollback calismadi"; echo "       $SELIN"; KALAN=$((KALAN + 1))
+fi
+# Ayni yeni telefonla paralel iki istek: ikisi de 500 almamali (ON CONFLICT)
+TN2='X-Musteri-Telefon: +905550007702'
+curl -s -o /tmp/md-p1.json -w '%{http_code}' -X POST -H "$TOK" -H "$TN2" \
+  -H 'Content-Type: application/json' \
+  -d '{"ad":"Paralel"}' "$TABAN/bot/musteri" > /tmp/md-c1.txt &
+P1=$!
+curl -s -o /tmp/md-p2.json -w '%{http_code}' -X POST -H "$TOK" -H "$TN2" \
+  -H 'Content-Type: application/json' \
+  -d '{"soyad":"Musteri"}' "$TABAN/bot/musteri" > /tmp/md-c2.txt &
+P2=$!
+wait $P1 $P2
+C1=$(cat /tmp/md-c1.txt); C2=$(cat /tmp/md-c2.txt)
+if [ "$C1" = "200" ] && [ "$C2" = "200" ]; then
+  echo "[PASS] Musteri: ayni telefonla paralel istek -> ikisi de 200 (500 yok)"
+  GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Musteri: paralel istek 500/çakışma uretti ($C1/$C2)"; KALAN=$((KALAN + 1))
+fi
+# Paralel ayni slot: biri kazanir, digeri 409; 500 yok
+TN3='X-Musteri-Telefon: +905550007703'
+TN4='X-Musteri-Telefon: +905550007704'
+GOV_P="{\"sube_id\":1,\"tur_kodu\":\"TEST_SURUSU\",\"tarih\":\"$GUN2\",\"baslangic\":\"14:00\"}"
+# 14:00'te 3 saticidan biri zaten mesgul (VIN41 teslimati) -> 2 bos yer var.
+# Ayni slota 3 paralel istek: 2 kazanir, 1 cakisma alir; 500 olmamali.
+TN5='X-Musteri-Telefon: +905550007705'
+PIDS=""
+for n in 3 4 5; do
+  eval "T=\$TN$n"
+  curl -s -o /dev/null -w '%{http_code}' -X POST -H "$TOK" -H "$T" \
+    -H 'Content-Type: application/json' -d "$GOV_P" "$TABAN/bot/randevu" > "/tmp/md-s$n.txt" &
+  PIDS="$PIDS $!"
+done
+# DİKKAT: argümansız `wait` arka plandaki sunucuyu da bekler (sonsuz).
+wait $PIDS
+OKS=0; CAK=0; DIGER=0
+for n in 3 4 5; do
+  K=$(cat "/tmp/md-s$n.txt")
+  case "$K" in
+    201) OKS=$((OKS + 1)) ;;
+    409) CAK=$((CAK + 1)) ;;
+    *)   DIGER=$((DIGER + 1)) ;;
+  esac
+done
+if [ "$OKS" -eq 2 ] && [ "$CAK" -eq 1 ] && [ "$DIGER" -eq 0 ]; then
+  echo "[PASS] Randevu: ayni slota 3 paralel istek -> 2x201, 1x409"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Randevu: paralel yaris beklenmedik (201=$OKS, 409=$CAK, diger=$DIGER)"
+  KALAN=$((KALAN + 1))
+fi
+# TESLIMAT: kendi satilmis araci ile basarili yazma
+# Atama VIN sırasına göre deterministik; müşterinin kendi araçlarından biri seçilir.
+bekle "Randevu: TESLIMAT kendi araciyla olusur" 201 '"tur_kodu":"TESLIMAT"' \
+  -X POST -H "$TOK" -H "$TEL_S" -H 'Content-Type: application/json' \
+  -d "{\"sube_id\":1,\"tur_kodu\":\"TESLIMAT\",\"tarih\":\"$GUN2\",\"baslangic\":\"15:00\"}" \
+  "$TABAN/bot/randevu"
+# Girdi dogrulama: 64+ karakter ad, saniyeli saat
+UZUN=$(printf 'a%.0s' $(seq 1 65))
+bekle "Randevu: 65 karakter ad -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -X POST -H "$TOK" -H "$TEL_S" -H 'Content-Type: application/json' \
+  -d "{\"sube_id\":1,\"tur_kodu\":\"TEST_SURUSU\",\"tarih\":\"$GUN2\",\"baslangic\":\"10:00\",\"ad\":\"$UZUN\"}" \
+  "$TABAN/bot/randevu"
+bekle "Randevu: saniyeli saat (10:00:30) -> 400" 400 '"kod":"GECERSIZ_SAAT"' \
+  -X POST -H "$TOK" -H "$TEL_S" -H 'Content-Type: application/json' \
+  -d "{\"sube_id\":1,\"tur_kodu\":\"TEST_SURUSU\",\"tarih\":\"$GUN2\",\"baslangic\":\"10:00:30\"}" \
+  "$TABAN/bot/randevu"
+# Sinir: 22 gun ileri reddedilir
+G22R=$(date -v+22d +%Y-%m-%d)
+bekle "Randevu: 22 gun ileri -> 400" 400 '"kod":"COK_UZAK_TARIH"' \
+  -X POST -H "$TOK" -H "$TEL_S" -H 'Content-Type: application/json' \
+  -d "{\"sube_id\":1,\"tur_kodu\":\"TEST_SURUSU\",\"tarih\":\"$G22R\",\"baslangic\":\"10:00\"}" \
+  "$TABAN/bot/randevu"
+# Musteri guncellemesi: soyad sonradan, ad korunuyor
+SON=$(curl -s -X POST -H "$TOK" -H "$TN1" -H 'Content-Type: application/json' \
+  -d '{"soyad":"Akdemir"}' "$TABAN/bot/musteri")
+if printf '%s' "$SON" | grep -qF '"ad":"Zeynep"' \
+   && printf '%s' "$SON" | grep -qF '"soyad":"Akdemir"'; then
+  echo "[PASS] Musteri: ad korunurken soyad guncellendi"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Musteri: kismi guncelleme ad'i ezdi"; echo "       $SON"; KALAN=$((KALAN + 1))
+fi
 
 echo "--- Baslangic guvenlik kontrolleri ---"
 

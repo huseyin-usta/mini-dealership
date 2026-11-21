@@ -30,21 +30,26 @@ session'lara ve ekip arkadaşına bağlam aktarımı içindir.
     `docs/analiz/sorgular.sql`, `docs/analiz/indeks-analizi.md`): 7 sorgu ve 13 indeks
     `EXPLAIN (ANALYZE, BUFFERS)` ile ölçüldü.
 - **Bot API (backend)**: `docs/api/bot-sozlesmesi.md` sözleşmesi; `GET /bot/sube`,
-  `GET /bot/slot` ve `GET /bot/arac` uçtan uca tamam (sözleşme + Java + test).
-  Köprü↔backend arasında `X-Bot-Token` (BOT_TOKEN, ≥32 karakter) zorunlu; varsayılan
-  bind `127.0.0.1` (`BIND_ADRESI`). Kalan bot uçları: `/bot/randevu` (POST/GET/iptal),
-  `/bot/mesaj` (giriş noktası).
+  `GET /bot/slot`, `GET /bot/arac`, `POST /bot/randevu` ve `POST /bot/musteri`
+  uçtan uca tamam (sözleşme + Java + test). Köprü↔backend arasında `X-Bot-Token`
+  (BOT_TOKEN, ≥32 karakter) zorunlu; varsayılan bind `127.0.0.1` (`BIND_ADRESI`).
+  Kalan bot uçları: `GET /bot/randevu` (geçmiş), `POST /bot/randevu/{id}/iptal`,
+  `POST /bot/mesaj` (giriş noktası).
 - Test: `scripts/test-db.sh` 23 senaryo (trigger, view, rol/RLS, müşteri izolasyonu);
-  `scripts/test-bot-http.sh` 117 HTTP senaryosu (gerçek Postgres + gerçek JAR, token/kimlik/
-  müsaitlik/stok/hatalar). Hepsi geçiyor.
+  `scripts/test-bot-http.sh` 146 HTTP senaryosu (gerçek Postgres + gerçek JAR; token/kimlik/
+  müsaitlik/stok/randevu/hatalar, eşzamanlılık dahil). Hepsi geçiyor.
 - Şema görselleştirme: `scripts/sema-diyagram.sh` (tbls + geçici Docker Postgres)
   → `docs/sema/` çıktısı güncel şemayla (tablolar, view'lar, trigger'lar, indeksler) yenilendi.
 - Kalan işler: bot API'nin kalan uçları, WhatsApp köprüsü, panel API'leri, panel (HTML/JS, Şevda), Docker Compose.
-- **Açık takip (randevu yazma ucu gelince):** `fn_randevu_dogrula` trigger'ı
-  TESLIMAT/bakım/servise girişte aracın müşteriye ait olduğunu **denetlemiyor**
-  (bugün yazma yolu yok; tek savunma `/bot/slot`). `POST /bot/randevu` yazılırken
-  trigger'a sahiplik + şube kuralı eklenecek; DDL mühürlü olduğu için bu turda
-  dokunulmadı.
+- **Açık takip (DB invariant):** `fn_randevu_dogrula` trigger'ı TESLIMAT/bakım/
+  servise girişte aracın müşteriye ait olduğunu **denetlemiyor**; tek savunma
+  Java tarafı (`RandevuHandler` + `SlotHandler`). DDL mühürlü olduğu için bu turda
+  dokunulmadı; trigger'a sahiplik + şube kuralı eklenmesi final rapor öncesi
+  değerlendirilecek (mevcut 146 test API'yi koruyor).
+- **`musteri.ad/soyad` artık NULL olabilir** (`db/440_musteri_bilgisi.sql`):
+  kimlik telefondur, isim sonradan öğrenilir. Bu dosya ayrıca bot'a
+  `UPDATE (ad, soyad)` yetkisi ve RLS UPDATE politikası ekler. `v_rapor_randevu`
+  bu nedenle `concat_ws` + `nullif` ile NULL-güvenli hale getirildi.
 - Takvim: son rapor **3 Aralık 2026**, dönem sonunda demo.
 - Görev dağılımı: `mini-dealership.md`'deki taslak + bu dosyadaki "İş bölümü" bölümü.
 
