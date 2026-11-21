@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tr.edu.etu.dealership.config.Ayarlar;
 import tr.edu.etu.dealership.db.Veritabani;
+import tr.edu.etu.dealership.web.AracHandler;
 import tr.edu.etu.dealership.web.BotTokeni;
 import tr.edu.etu.dealership.web.HttpYardimci;
 import tr.edu.etu.dealership.web.SlotHandler;
@@ -40,6 +41,7 @@ public final class Main {
         // Bot API (docs/api/bot-sozlesmesi.md)
         sunucu.createContext("/bot/sube", new SubeHandler(db, token));
         sunucu.createContext("/bot/slot", new SlotHandler(db, token));
+        sunucu.createContext("/bot/arac", new AracHandler(db, token));
         sunucu.createContext("/saglik", HttpYardimci.saglik(db));
 
         sunucu.start();
