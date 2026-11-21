@@ -13,7 +13,17 @@ echo "==> PostgreSQL 17 test konteyneri başlatılıyor..."
 docker run --rm -d --name "$CONTAINER" -e POSTGRES_PASSWORD="$PW" -p 127.0.0.1:5435:5432 postgres:17-alpine >/dev/null
 trap 'docker rm -f "$CONTAINER" >/dev/null 2>&1' EXIT
 
-until docker exec "$CONTAINER" pg_isready -U postgres -q; do sleep 1; done
+# Resmi postgres imajı initdb için geçici bir sunucu açar ve kapatır;
+# "ready" satırı iki kez görünür. İkincisini beklemek yarışı kapatır.
+hazir=0
+while [ "$hazir" -eq 0 ]; do
+  if [ "$(docker logs "$CONTAINER" 2>&1 | grep -c 'ready to accept connections')" -ge 2 ] \
+     && docker exec "$CONTAINER" psql -U postgres -d postgres -tAc 'SELECT 1' >/dev/null 2>&1; then
+    hazir=1
+  else
+    sleep 1
+  fi
+done
 
 echo "==> Şema ve trigger dosyaları (db/*.sql) yükleniyor..."
 for f in db/*.sql; do

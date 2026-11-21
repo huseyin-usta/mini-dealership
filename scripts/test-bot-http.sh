@@ -37,7 +37,17 @@ echo "==> PostgreSQL 17 test konteyneri başlatılıyor..."
 docker run --rm -d --name "$CONTAINER" -e POSTGRES_PASSWORD="$PW" -p 127.0.0.1:$PORT:5432 \
   postgres:17-alpine >/dev/null
 
-until docker exec "$CONTAINER" pg_isready -U postgres -q; do sleep 1; done
+# Resmi postgres imajı initdb için geçici bir sunucu açar ve kapatır;
+# "ready" satırı iki kez görünür. İkincisini beklemek yarışı kapatır.
+hazir=0
+while [ "$hazir" -eq 0 ]; do
+  if [ "$(docker logs "$CONTAINER" 2>&1 | grep -c 'ready to accept connections')" -ge 2 ] \
+     && docker exec "$CONTAINER" psql -U postgres -d postgres -tAc 'SELECT 1' >/dev/null 2>&1; then
+    hazir=1
+  else
+    sleep 1
+  fi
+done
 
 echo "==> Şema dosyaları (db/*.sql) yükleniyor..."
 for f in db/*.sql; do
@@ -88,8 +98,10 @@ UNION ALL SELECT 'ARAC_INCELEME', g, '10:00'::time, '12:00'::time FROM generate_
 UNION ALL SELECT 'SATIN_ALIM', g, '09:00'::time, '17:00'::time FROM generate_series(1, 6) g
 UNION ALL SELECT 'TEST_SURUSU2', g, '10:00'::time, '12:00'::time FROM generate_series(1, 6) g;
 
-INSERT INTO model (ad, garanti_yil, garanti_km) VALUES ('Ioniq 5', 3, 100000);
-INSERT INTO versiyon (model_id, paket_adi, model_yili, liste_fiyati) VALUES (1, 'Advance', 2024, 2000000);
+INSERT INTO model (ad, garanti_yil, garanti_km) VALUES
+  ('Ioniq 5', 3, 100000), ('Tucson', 3, 100000);
+INSERT INTO versiyon (model_id, paket_adi, model_yili, liste_fiyati) VALUES
+  (1, 'Advance', 2024, 2000000), (1, 'Elite', 2024, 2400000), (2, 'Elite', 2024, 2350000);
 
 -- Şube 1: üç test sürüşü yetkinlikli satıcı + bir servis çalışanı
 INSERT INTO calisan (sube_id, ad, soyad, departman, eposta, kullanici_adi, sifre_hash, ise_giris_tarihi) VALUES
@@ -102,9 +114,18 @@ VALUES (1, 1, '2024-01-01'), (2, 1, '2024-01-01'), (3, 1, '2024-01-01');
 
 INSERT INTO arac (vin, versiyon_id, sube_id, renk, durum, tahmini_varis_tarihi) VALUES
   ('VIN00000000000001', 1, 1, 'Beyaz', 'STOKTA', NULL),
-  ('VIN00000000000002', 1, 1, 'Gri',   'STOKTA', NULL),
+  ('VIN00000000000002', 1, 1, 'Beyaz', 'STOKTA', NULL),
   ('VIN00000000000003', 1, 1, 'Siyah', 'STOKTA', NULL),
-  ('VIN00000000000009', 1, 1, 'Mavi',  'YOLDA',  current_date + 10);
+  ('VIN00000000000009', 1, 1, 'Mavi',  'YOLDA',  current_date + 10),
+  -- Sube 1'de Elite paket (renk kirilimi ve paket ayrimi icin)
+  ('VIN00000000000004', 2, 1, 'Beyaz', 'STOKTA', NULL),
+  ('VIN00000000000005', 2, 1, 'Gri',   'STOKTA', NULL),
+  -- Istanbul Kadikoy (sube 3): stok + yolda
+  ('VIN00000000000011', 1, 3, 'Beyaz', 'STOKTA', NULL),
+  ('VIN00000000000012', 1, 3, 'Gri',   'STOKTA', NULL),
+  ('VIN00000000000013', 1, 3, 'Beyaz', 'YOLDA',  current_date + 5),
+  -- Istanbul Besiktas (sube 4): farkli model
+  ('VIN00000000000014', 3, 4, 'Siyah', 'STOKTA', NULL);
 
 -- Musteriler: farkli senaryolar icin ayri musteriler (ayni musteri ayni saatte
 -- birden fazla randevuda olamaz; EXCLUDE kisiti)
@@ -382,6 +403,105 @@ bekle "Stokta olmayan VIN 404" 404 '"kod":"ARAC_STOKTA_YOK"' \
   -H "$TOK" -H "$TEL" "$TABAN/bot/slot?sube_id=1&tur_kodu=TEST_SURUSU&tarih=$GUN&arac_vin=VIN00000000000009"
 bekle "Zorunlu parametre eksik 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
   -H "$TOK" -H "$TEL" "$TABAN/bot/slot?tur_kodu=TEST_SURUSU&tarih=$GUN"
+
+echo "--- GET /bot/arac ---"
+# Filtresiz: model bazinda toplam
+bekle "Arac: filtresiz model ozeti (Ioniq 5)" 200 '"model":"Ioniq 5"' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/arac"
+YANIT_M=$(curl -s -H "$TOK" -H "$TEL" "$TABAN/bot/arac")
+if printf '%s' "$YANIT_M" | grep -qF '"model":"Tucson"' \
+   && printf '%s' "$YANIT_M" | grep -qF '"bilgi":"'; then
+  echo "[PASS] Arac: filtresiz ozette tum modeller ve bilgi alani var"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Arac: filtresiz ozet eksik"; echo "       $YANIT_M"; KALAN=$((KALAN + 1))
+fi
+# Model: sehir + paket kirilimi (Ankara ve Istanbul birlikte)
+bekle "Arac: model -> sehir kirilimi (Ankara)" 200 '"sehir":"Ankara","paket":"Advance","stokta":3' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/arac?model=Ioniq%205"
+bekle "Arac: model -> sehir kirilimi (Istanbul)" 200 '"sehir":"İstanbul","paket":"Advance","stokta":2' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/arac?model=Ioniq%205"
+# Sehir: sube + model + paket kirilimi
+bekle "Arac: sehir -> sube kirilimi" 200 '"sube":"Çankaya","model":"Ioniq 5"' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/arac?sehir=Ankara"
+bekle "Arac: sehir + model -> sube kirilimi" 200 '"sube":"Çankaya","model":"Ioniq 5","paket":"Elite"' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/arac?sehir=Ankara&model=Ioniq%205"
+# Sube: paket + renk kirilimi
+YANIT_R=$(curl -s -H "$TOK" -H "$TEL" "$TABAN/bot/arac?sube_id=1")
+if printf '%s' "$YANIT_R" | grep -qF '"renk":"Beyaz","adet":2' \
+   && printf '%s' "$YANIT_R" | grep -qF '"sube":{"sube_id":1,"sehir":"Ankara","ad":"Çankaya"}' \
+   && ! printf '%s' "$YANIT_R" | grep -qF '"renk":"Mavi"'; then
+  echo "[PASS] Arac: sube detayi renk kirilimi (Beyaz x2; yoldaki Mavi sayilmaz)"
+  GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Arac: sube detayi yanlis"; echo "       $YANIT_R"; KALAN=$((KALAN + 1))
+fi
+# Yolda ve en_erken_varis sayaclari: sube 1'de 3 yolda arac (VIN09, VIN31, VIN32)
+if printf '%s' "$YANIT_R" | grep -qF '"yolda":3' \
+   && printf '%s' "$YANIT_R" | grep -qF '"en_erken_varis":"' ; then
+  echo "[PASS] Arac: yolda sayisi ve en_erken_varis dolu"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Arac: yolda/en_erken_varis eksik"; echo "       $YANIT_R"; KALAN=$((KALAN + 1))
+fi
+# sube_id + model kombinasyonu
+bekle "Arac: sube_id + model filtresi" 200 '"paket":"Elite"' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/arac?sube_id=1&model=Ioniq%205"
+# Model var ama o sehirde arac yok -> 200 + bos liste (404 degil)
+YANIT_BOS=$(curl -s -w '\n%{http_code}' -H "$TOK" -H "$TEL" "$TABAN/bot/arac?sehir=Bursa")
+KOD_BOS=$(printf '%s' "$YANIT_BOS" | tail -n1)
+GOV_BOS=$(printf '%s' "$YANIT_BOS" | sed '$d')
+if [ "$KOD_BOS" = "200" ] && printf '%s' "$GOV_BOS" | grep -qF '"subeler":[]'; then
+  echo "[PASS] Arac: subesi olup stogu olmayan sehir -> 200 bos"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Arac: bos sehir yaniti yanlis"; echo "       HTTP $KOD_BOS $GOV_BOS"; KALAN=$((KALAN + 1))
+fi
+# Model var ama sehirde o model yok -> 200 bos
+YANIT_BOS2=$(curl -s -w '\n%{http_code}' -H "$TOK" -H "$TEL" "$TABAN/bot/arac?sehir=Ankara&model=Tucson")
+KOD_BOS2=$(printf '%s' "$YANIT_BOS2" | tail -n1)
+if [ "$KOD_BOS2" = "200" ]; then
+  echo "[PASS] Arac: model var ama sehirde yok -> 200 bos"; GECEN=$((GECEN + 1))
+else
+  echo "[FAIL] Arac: model+sehir bos yaniti $KOD_BOS2"; KALAN=$((KALAN + 1))
+fi
+# Kendi araclarim: Selin'in 3 araci, baska modelde filtrelenince 0
+# Selin'in 4 araci var (biri Izmir subesinde); sahiplik subeye bagli degil.
+bekle "Arac: kapsam=benim kendi araclarini listeler" 200 '"toplam_arac":4' \
+  -H "$TOK" -H "$TEL_S" "$TABAN/bot/arac?kapsam=benim"
+bekle "Arac: kapsam=benim + model filtresi" 200 '"vin":"VIN00000000000022"' \
+  -H "$TOK" -H "$TEL_S" "$TABAN/bot/arac?kapsam=benim&model=Ioniq%205"
+bekle "Arac: kapsam=benim baska model -> bos" 200 '"toplam_arac":0' \
+  -H "$TOK" -H "$TEL_S" "$TABAN/bot/arac?kapsam=benim&model=Tucson"
+# Aracı olmayan müşteri: bos liste, hata degil
+bekle "Arac: aracsiz musteri -> bos liste" 200 '"toplam_arac":0' \
+  -H "$TOK" -H "$TEL_B" "$TABAN/bot/arac?kapsam=benim"
+# Hatalar
+bekle "Arac: olmayan sehir -> 404" 404 '"kod":"SEHIRDE_SUBE_YOK"' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/arac?sehir=Kars"
+bekle "Arac: olmayan model -> 404" 404 '"kod":"MODEL_YOK"' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/arac?model=Yok%20Model"
+bekle "Arac: olmayan sube -> 404" 404 '"kod":"SUBE_YOK"' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/arac?sube_id=999"
+bekle "Arac: sehir + sube_id -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/arac?sehir=Ankara&sube_id=1"
+bekle "Arac: gecersiz kapsam -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/arac?kapsam=hepsi"
+bekle "Arac: kapsam=benim + sehir -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -H "$TOK" -H "$TEL_S" "$TABAN/bot/arac?kapsam=benim&sehir=Ankara"
+bekle "Arac: sayisal olmayan sube_id -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/arac?sube_id=abc"
+bekle "Arac: POST -> 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' \
+  -X POST -H "$TOK" -H "$TEL" "$TABAN/bot/arac"
+bekle "Arac: token yok -> 401" 401 '"kod":"YETKISIZ_ISTEK"' \
+  -H "$TEL" "$TABAN/bot/arac"
+bekle "Arac: kimlik yok -> 401" 401 '"kod":"KIMLIK_YOK"' \
+  -H "$TOK" "$TABAN/bot/arac"
+bekle "Arac: kapsam=benim + sube_id -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -H "$TOK" -H "$TEL_S" "$TABAN/bot/arac?kapsam=benim&sube_id=1"
+bekle "Arac: bos model parametresi -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/arac?model="
+bekle "Arac: tekrarli parametre -> 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/arac?sube_id=1&sube_id=3"
+bekle "Arac: tanimsiz alt yol -> 404" 404 '"kod":"YOL_YOK"' \
+  -H "$TOK" -H "$TEL" "$TABAN/bot/arac/ekstra"
 
 echo "--- GET /bot/slot (TESLIMAT) ---"
 bekle "Teslimat: musteri kendi satilmis aracini secer" 200 '"ok":true' \

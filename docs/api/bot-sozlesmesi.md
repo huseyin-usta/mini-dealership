@@ -497,3 +497,208 @@ SELECT o.baslangic::time, o.bitis::time,
   }
 }
 ```
+
+---
+
+## 3. `GET /bot/arac`
+
+Stoktaki ve yoldaki araçları model / şehir / şube kırılımında sayar; ayrıca
+müşterinin kendi araçlarını listeler.
+
+**Stok tanımı:** `STOKTA` ve `YOLDA` durumları. `SATILDI` araçlar stok sayılmaz
+(onlar müşterilerin araçlarıdır ve yalnız sahibine görünür).
+
+**Fiyat dönmez.** Güncel liste fiyatları için bot web sitesine yönlendirir;
+böylece eski fiyat söyleme riski doğmaz.
+
+**Paket (donanım) aracın kimliğinin parçasıdır.** `versiyon` tablosu model +
+paket + model yılı + liste fiyatını taşır; her fiziksel araç üretimde sabitlenmiş
+bir versiyona sahiptir. Bayide sonradan paket takılmaz.
+
+### Kademeli daralma
+
+Filtre verilmezse en geniş grup, filtre verdikçe bir seviye daralan grup döner:
+
+| Filtre | Gruplama | Cevapladığı soru |
+|---|---|---|
+| *(yok)* | model | "Hangi modeller var?" |
+| `model` | şehir + paket | "İzmir'de 5, Ankara'da 3, İstanbul'da 10" |
+| `sehir` | şube + model + paket | "Ankara'da hangi şubede?" |
+| `sube_id` | model + paket + **renkler** | "Kadıköy'de hangi paket/renk?" |
+| `kapsam=benim` | araç (VIN'li) | "Arabalarım neler?" |
+
+### İstek
+
+```
+GET /bot/arac
+GET /bot/arac?model=Ioniq%205
+GET /bot/arac?sehir=Ankara
+GET /bot/arac?sube_id=1
+GET /bot/arac?kapsam=benim&model=Ioniq%205
+```
+
+| Query | Tip | Zorunlu | Açıklama |
+|---|---|---|---|
+| `model` | string | ❌ | Model adı, tam eşleşme (`Ioniq 5`) |
+| `sehir` | string | ❌ | Şehir, tam eşleşme; `sube_id` ile birlikte kullanılamaz |
+| `sube_id` | integer | ❌ | Şube; `sehir` ile birlikte kullanılamaz |
+| `kapsam` | string | ❌ | Yalnızca `benim`: müşterinin kendi araçları. `sehir`/`sube_id` ile kullanılamaz |
+
+### Başarılı yanıt — `200 OK`
+
+**Filtresiz (model özeti):**
+
+```json
+{
+  "ok": true,
+  "veri": {
+    "toplam": { "stokta": 34, "yolda": 9 },
+    "modeller": [
+      { "model": "Ioniq 5", "stokta": 18, "yolda": 3, "en_erken_varis": "2026-12-05" },
+      { "model": "Tucson",  "stokta": 16, "yolda": 6, "en_erken_varis": "2026-12-12" }
+    ],
+    "bilgi": "34 araç stokta, 9 araç yolda."
+  }
+}
+```
+
+**`?model=Ioniq 5` (şehir + paket):**
+
+```json
+{
+  "ok": true,
+  "veri": {
+    "model": "Ioniq 5",
+    "toplam": { "stokta": 13, "yolda": 3 },
+    "sehirler": [
+      { "sehir": "Ankara",   "paket": "Advance", "stokta": 3, "yolda": 1, "en_erken_varis": "2026-12-12" },
+      { "sehir": "İstanbul", "paket": "Advance", "stokta": 10, "yolda": 2, "en_erken_varis": "2026-12-05" }
+    ],
+    "bilgi": "13 araç stokta, 3 araç yolda."
+  }
+}
+```
+
+**`?sehir=Ankara` (şube + model + paket):**
+
+```json
+{
+  "ok": true,
+  "veri": {
+    "sehir": "Ankara",
+    "toplam": { "stokta": 3, "yolda": 1 },
+    "subeler": [
+      { "sube_id": 1, "sube": "Çankaya", "model": "Ioniq 5", "paket": "Advance",
+        "stokta": 3, "yolda": 1, "en_erken_varis": "2026-12-12" }
+    ],
+    "bilgi": "Ankara: 3 araç stokta, 1 araç yolda."
+  }
+}
+```
+
+**`?sube_id=1` (paket + renk):**
+
+```json
+{
+  "ok": true,
+  "veri": {
+    "sube": { "sube_id": 1, "sehir": "Ankara", "ad": "Çankaya" },
+    "toplam": { "stokta": 3, "yolda": 1 },
+    "paketler": [
+      {
+        "model": "Ioniq 5", "paket": "Advance", "stokta": 3, "yolda": 1,
+        "en_erken_varis": "2026-12-12",
+        "renkler": [ { "renk": "Beyaz", "adet": 2 }, { "renk": "Siyah", "adet": 1 } ]
+      }
+    ],
+    "bilgi": "Çankaya (Ankara): 3 araç stokta, 1 araç yolda."
+  }
+}
+```
+
+`renkler` yalnız **stoktaki** araçları sayar (yoldaki araçların rengi sayılmaz).
+
+`en_erken_varis` yalnız `yolda > 0` iken doludur; aksi halde `null` döner.
+Grubun tamamı stoktaysa bu alan `null` olur — hata değildir.
+
+Kriterlere uyan araç yoksa `200` ve boş liste döner (`subeler: []`, `sehirler: []`
+veya `paketler: []`) ve `bilgi` "Bu kriterlerde araç bulunmuyor." olur. Bilinmeyen
+model/şehir/şube ile boş sonuç ayrıdır: bilinmeyen değer `404` alır.
+
+**`?kapsam=benim` (müşterinin araçları):**
+
+```json
+{
+  "ok": true,
+  "veri": {
+    "toplam_arac": 2,
+    "araclar": [
+      { "vin": "VIN00000000000022", "model": "Ioniq 5", "paket": "Advance",
+        "renk": "Beyaz", "plaka": "06AA01" },
+      { "vin": "VIN00000000000024", "model": "Ioniq 5", "paket": "Advance",
+        "renk": "Mor", "plaka": "35BB01" }
+    ],
+    "bilgi": "Kayıtlı 2 aracınız var."
+  }
+}
+```
+
+Araç yoksa `araclar: []`, `toplam_arac: 0` ve `bilgi: "Kayıtlı aracınız bulunmuyor."`
+döner — bu bir hata değildir. VIN yalnız bu modda döner (servis/teslim randevusu için).
+
+### Hata yanıtları
+
+| Kod | HTTP | `kullaniciya_goster` | Koşul |
+|---|---|---|---|
+| `SEHIRDE_SUBE_YOK` | 404 | true | `sehir` verildi, o şehirde şube yok |
+| `SUBE_YOK` | 404 | true | `sube_id` bulunamadı |
+| `MODEL_YOK` | 404 | true | `model` katalogda yok |
+| `GECERSIZ_PARAMETRE` | 400 | true | `sehir` + `sube_id` birlikte; `kapsam=benim` + `sehir`/`sube_id`; geçersiz `kapsam`; sayısal olmayan `sube_id` |
+
+### Veritabanı
+
+```sql
+-- Filtresiz: model özeti
+SELECT md.ad AS model,
+       count(*) FILTER (WHERE a.durum = 'STOKTA') AS stokta,
+       count(*) FILTER (WHERE a.durum = 'YOLDA')  AS yolda,
+       min(a.tahmini_varis_tarihi) FILTER (WHERE a.durum = 'YOLDA') AS en_erken_varis
+  FROM arac a
+  JOIN versiyon v ON v.versiyon_id = a.versiyon_id
+  JOIN model   md ON md.model_id   = v.model_id
+  JOIN sube     s ON s.sube_id     = a.sube_id
+ WHERE a.durum IN ('STOKTA','YOLDA')
+ GROUP BY md.ad
+ ORDER BY md.ad COLLATE "C";
+
+-- kapsam=benim: müşterinin araçları (RLS + açık sahiplik koşulu)
+SELECT a.vin, md.ad, v.paket_adi, a.renk, a.plaka
+  FROM arac a
+  JOIN versiyon v ON v.versiyon_id = a.versiyon_id
+  JOIN model   md ON md.model_id   = v.model_id
+ WHERE a.durum = 'SATILDI' AND a.musteri_id = fn_aktif_musteri_id();
+```
+
+- Tablolar: `arac`, `versiyon`, `model`, `sube`
+- Rol: `bot`; RLS `p_arac_bot_oku` stokta/yoldaki araçları ve müşterinin kendi
+  araçlarını gösterir, başkasının `SATILDI` aracını göstermez
+- İndeks: `idx_arac_sube_durum (sube_id, durum)` şube filtreli sorgularda,
+  `idx_arac_musteri (musteri_id)` kendi araçlar sorgusunda kullanılır
+
+### LLM tool tanımı
+
+```json
+{
+  "name": "arac_listele",
+  "description": "Stoktaki ve yoldaki araçları listeler. Parametresiz çağrılırsa model bazında toplam verir. Bir model verilirse o modelin şehir ve paket kırılımını döner. Şehir verilirse o şehirdeki şubeleri, şube verilirse paket ve renk kırılımını döner. kapsam=benim verilirse müşterinin kendi araçlarını VIN ve plakasıyla listeler (servis randevusu için). Fiyat bilgisi dönmez; fiyat sorulursa web sitesine yönlendir.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "model":   { "type": "string",  "description": "Model adı (ör. Ioniq 5). Tam eşleşme." },
+      "sehir":   { "type": "string",  "description": "Şehir adı (ör. Ankara). sube_id ile birlikte kullanılamaz." },
+      "sube_id": { "type": "integer", "description": "Şube kimliği. sehir ile birlikte kullanılamaz." },
+      "kapsam":  { "type": "string",  "enum": ["benim"], "description": "Yalnızca müşterinin kendi araçlarını listeler." }
+    }
+  }
+}
+```
