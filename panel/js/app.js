@@ -13,6 +13,7 @@ const MENU = [
   ['araclar', 'Araçlar', 'araclar'],
   ['servis', 'Servis kayıtları', 'servis'],
   ['musteriler', 'Müşteriler', 'musteriler'],
+  ['raporlar', 'Raporlar', 'raporlar'],
 ];
 
 // Menüde görünmeyen detay rotaları → modül ve menüde vurgulanacak öğe
