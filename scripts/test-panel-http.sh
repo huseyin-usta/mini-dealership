@@ -515,6 +515,42 @@ bekle "Masraf kırılımı (sigorta payı)" 200 '"toplam_masraf":9000,"musteri_p
   -H "$AUTH" "$TABAN/panel/servis/2"
 bekle "Olmayan servis 404" 404 'Servis kaydı bulunamadı' -H "$AUTH" "$TABAN/panel/servis/999"
 
+echo "--- POST /panel/servis/{id}/durum ---"
+SDURUM() { bekle "$1" "$2" "$3" -X POST -H "$AUTH" -H "$JSON" -d "$5" "$TABAN/panel/servis/$4/durum"; }
+YARIN=$(python3 -c 'import datetime as d; print(d.date.today()+d.timedelta(days=3))')
+SDURUM "Durum eklenir, tahmini teslim güncellenir (201)" 201 "\"son_durum\":\"PARCA_BEKLENIYOR\"" 1 \
+  "{\"durum\":\"PARCA_BEKLENIYOR\",\"aciklama\":\"Şarj ünitesi sipariş edildi\",\"tahmini_teslim_tarihi\":\"$YARIN\"}"
+bekle "Tahmin güncellendi, artık gecikmede değil" 200 "\"kapandi_mi\":false,\"tahmini_teslim_tarihi\":\"$YARIN\",\"kalan_gun\":3,\"gecikti_mi\":false" \
+  -H "$AUTH" "$TABAN/panel/servis/1"
+bekle "Geçmiş silinmez: eski durumlar duruyor" 200 '{"durum":"ISLEMDE"' -H "$AUTH" "$TABAN/panel/servis/1"
+SDURUM "Geçersiz durum 400" 400 'durum geçersiz' 1 '{"durum":"HURDA"}'
+SDURUM "Geçmiş tahmini teslim tarihi 400" 400 '"kod":"GECMIS_TARIH"' 1 '{"durum":"ISLEMDE","tahmini_teslim_tarihi":"2020-01-01"}'
+SDURUM "Bozuk tarih 400" 400 '"kod":"GECERSIZ_TARIH"' 1 '{"durum":"ISLEMDE","tahmini_teslim_tarihi":"01.01.2027"}'
+SDURUM "Kapanmış kayda durum eklenemez 409" 409 '"kod":"KAPALI_KAYIT"' 4 '{"durum":"ISLEMDE"}'
+SDURUM "Olmayan servis 404" 404 'Servis kaydı bulunamadı' 999 '{"durum":"ISLEMDE"}'
+SDURUM "Bilinmeyen alan 400" 400 'Bilinmeyen alan: zaman' 1 '{"durum":"ISLEMDE","zaman":"2020-01-01T00:00"}'
+
+echo "--- POST /panel/servis/{id}/islem ---"
+SISLEM() { bekle "$1" "$2" "$3" -X POST -H "$AUTH" -H "$JSON" -d "$5" "$TABAN/panel/servis/$4/islem"; }
+SISLEM "Garantisi geçerli arızada garanti ödemesi kabul" 201 '"islem_adi":"Şarj ünitesi","ucret":42000,"odeme_kaynagi":"GARANTI"' 1 \
+  '{"islem_adi":"Şarj ünitesi","ucret":42000,"odeme_kaynagi":"GARANTI"}'
+bekle "Masraf kırılımı güncellendi" 200 '"toplam_masraf":43500,"musteri_payi":1500,"garanti_payi":42000,"sigorta_payi":0' \
+  -H "$AUTH" "$TABAN/panel/servis/1"
+SISLEM "Arızada sigorta ödemesi 409 ODEME_KAYNAGI_GECERSIZ" 409 '"kod":"ODEME_KAYNAGI_GECERSIZ"' 1 \
+  '{"islem_adi":"X","ucret":10,"odeme_kaynagi":"SIGORTA"}'
+SISLEM "Garanti km'si aşılmış araçta garanti 409 KM_ASILDI" 409 '"sebep":"KM_ASILDI"' 3 \
+  '{"islem_adi":"Motor","ucret":5000,"odeme_kaynagi":"GARANTI"}'
+SISLEM "Aynı kayda müşteri ödemesi kabul" 201 '"odeme_kaynagi":"MUSTERI"' 3 \
+  '{"islem_adi":"Motor","ucret":5000,"odeme_kaynagi":"MUSTERI"}'
+SISLEM "Kapanmış kayda işlem eklenemez 409" 409 '"kod":"KAPALI_KAYIT"' 4 '{"islem_adi":"X","ucret":10,"odeme_kaynagi":"MUSTERI"}'
+SISLEM "Negatif ücret 400" 400 'negatif' 1 '{"islem_adi":"X","ucret":-5,"odeme_kaynagi":"MUSTERI"}'
+SISLEM "Kesirli ücret 400 (tam sayı TL)" 400 'ucret tam sayı' 1 '{"islem_adi":"X","ucret":10.5,"odeme_kaynagi":"MUSTERI"}'
+SISLEM "Geçersiz ödeme kaynağı 400" 400 'odeme_kaynagi' 1 '{"islem_adi":"X","ucret":10,"odeme_kaynagi":"NAKIT"}'
+SISLEM "İşlem adı eksik 400" 400 'islem_adi zorunlu' 1 '{"ucret":10,"odeme_kaynagi":"MUSTERI"}'
+SISLEM "Olmayan servis 404" 404 'Servis kaydı bulunamadı' 999 '{"islem_adi":"X","ucret":10,"odeme_kaynagi":"MUSTERI"}'
+yok "Reddedilen garanti işlemi kaydedilmedi (rollback)" '"islem_adi":"X"' -H "$AUTH" "$TABAN/panel/servis/1"
+bekle "GET /islem 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' -H "$AUTH" "$TABAN/panel/servis/1/islem"
+
 # ============================================================================
 echo "--- Başlangıç ve yapılandırma ---"
 baslat $((HTTP_PORT + 1)) /tmp/md-panel-kisa.log \

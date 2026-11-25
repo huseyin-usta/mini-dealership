@@ -43,6 +43,8 @@ public final class ServisPanelHandler extends PanelHandler {
         super(db, oturumlar);
         rota("GET", "/panel/servis", Rol.PERSONEL, this::listele);
         rota("GET", "/panel/servis/(\\d+)", Rol.PERSONEL, this::detayUcu);
+        rota("POST", "/panel/servis/(\\d+)/durum", Rol.PERSONEL, this::durumEkle);
+        rota("POST", "/panel/servis/(\\d+)/islem", Rol.PERSONEL, this::islemEkle);
     }
 
     // ---- §7 Listeleme ve detay -----------------------------------------------------
@@ -152,5 +154,102 @@ public final class ServisPanelHandler extends PanelHandler {
         return veri;
     }
 
+    // ---- §8 Güncelleme ----------------------------------------------------------------
 
+    private Object durumEkle(Istek i) throws Exception {
+        int id = i.yolSayi(1);
+        i.alanlar(Set.of("durum", "aciklama", "tahmini_teslim_tarihi"));
+        String durum = i.zorunluMetin("durum", 32);
+        if (!DURUMLAR.contains(durum)) throw Istek.gecersiz("durum geçersiz: " + durum);
+        String aciklama = i.metin("aciklama", 1000);
+        LocalDate tahmin = i.tarihAlani("tahmini_teslim_tarihi");
+        if (tahmin != null && tahmin.isBefore(LocalDate.now(RandevuPanelHandler.ISTANBUL))) {
+            throw ApiHatasi.goster("GECMIS_TARIH", "Tahmini teslim tarihi geçmişte olamaz.", 400, null);
+        }
+        Connection c = i.conn();
+        acikKaydiKilitle(c, id);
+        try (PreparedStatement ps = c.prepareStatement("""
+                INSERT INTO servis_durum_gecmisi (servis_kaydi_id, durum, aciklama)
+                VALUES (?, ?, ?)""")) {
+            ps.setInt(1, id);
+            ps.setString(2, durum);
+            ps.setString(3, aciklama);
+            ps.executeUpdate();
+        }
+        if (tahmin != null) {
+            try (PreparedStatement ps = c.prepareStatement(
+                    "UPDATE servis_kaydi SET tahmini_teslim_tarihi = ? WHERE servis_kaydi_id = ?")) {
+                ps.setDate(1, Date.valueOf(tahmin));
+                ps.setInt(2, id);
+                ps.executeUpdate();
+            }
+        }
+        return new Yanit(201, detay(c, id));
+    }
+
+    private Object islemEkle(Istek i) throws Exception {
+        int id = i.yolSayi(1);
+        i.alanlar(Set.of("islem_adi", "ucret", "odeme_kaynagi", "aciklama"));
+        String ad = i.zorunluMetin("islem_adi", 128);
+        long ucret = i.zorunluSayi("ucret");
+        if (ucret < 0) throw Istek.gecersiz("ucret negatif olamaz.");
+        String odeme = i.zorunluMetin("odeme_kaynagi", 10);
+        if (!ODEME.contains(odeme)) throw Istek.gecersiz("odeme_kaynagi MUSTERI, GARANTI veya SIGORTA olmalı.");
+        String aciklama = i.metin("aciklama", 1000);
+        Connection c = i.conn();
+        acikKaydiKilitle(c, id);
+        try (PreparedStatement ps = c.prepareStatement("""
+                INSERT INTO servis_islem (servis_kaydi_id, islem_adi, ucret, odeme_kaynagi, aciklama)
+                VALUES (?, ?, ?, ?, ?)""")) {
+            ps.setInt(1, id);
+            ps.setString(2, ad);
+            ps.setLong(3, ucret);
+            ps.setString(4, odeme);
+            ps.setString(5, aciklama);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw masrafHatasi(e);
+        }
+        return new Yanit(201, detay(c, id));
+    }
+
+    /**
+     * Kaydı kilitler; yoksa 404, kapanmışsa 409. Kapanma: teslim randevusu bağlı
+     * ya da son durum TAMAMLANDI ({@code v_servis_durumu.kapandi_mi} ile aynı tanım).
+     */
+    private static void acikKaydiKilitle(Connection c, int id) throws SQLException {
+        try (PreparedStatement ps = c.prepareStatement(
+                "SELECT 1 FROM servis_kaydi WHERE servis_kaydi_id = ? FOR UPDATE")) {
+            ps.setInt(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) throw Istek.bulunamadi("Servis kaydı");
+            }
+        }
+        try (PreparedStatement ps = c.prepareStatement(
+                "SELECT kapandi_mi FROM v_servis_durumu WHERE servis_kaydi_id = ?")) {
+            ps.setInt(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next() && rs.getBoolean(1)) {
+                    throw ApiHatasi.goster("KAPALI_KAYIT",
+                            "Kapanmış servis kaydına durum veya işlem eklenemez.", 409, null);
+                }
+            }
+        }
+    }
+
+    private static RuntimeException masrafHatasi(SQLException e) throws SQLException {
+        if (!"P0001".equals(e.getSQLState())) throw e;
+        String m = RandevuPanelHandler.ilkSatir(e.getMessage() == null ? "" : e.getMessage());
+        if (m.contains("masraflarını yalnızca")) {
+            return ApiHatasi.goster("ODEME_KAYNAGI_GECERSIZ", m, 409, null);
+        }
+        String sebep = m.contains("Satış kaydı bulunmayan") ? "SATIS_YOK"
+                : m.contains("kilometresini aşmıştır") ? "KM_ASILDI"
+                : m.contains("süresini doldurmuştur") ? "SURE_DOLDU"
+                : m.contains("aksatıl") ? "BAKIM_AKSATILDI" : null;
+        if (sebep != null) {
+            return ApiHatasi.goster("GARANTI_GECERSIZ", m, 409, Map.of("sebep", sebep));
+        }
+        return ApiHatasi.goster("KURAL_IHLALI", m, 409, null);
+    }
 }
