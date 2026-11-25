@@ -67,6 +67,8 @@ HASH=$(printf '%s' "$SIFRE" | java -cp "$JAR" tr.edu.etu.dealership.panel.SifreH
 echo "==> Test verisi yükleniyor (GUN=$GUN, GECMIS=$GECMIS)..."
 $PSQL -v hash="$HASH" -v gun="$GUN" -v gecmis="$GECMIS" \
       -v botpw="$BOTPW" -v panelpw="$PANELPW" << 'SQL'
+-- Seed'deki saatler İstanbul saatidir (timestamptz kolonları dahil)
+SET TIME ZONE 'Europe/Istanbul';
 CREATE ROLE bot_app LOGIN PASSWORD :'botpw' IN ROLE bot;
 -- Panel login rolü: NOINHERIT, SET ROLE yapmadan hiçbir yetkisi yok (fail-closed)
 CREATE ROLE panel_app LOGIN NOINHERIT PASSWORD :'panelpw' IN ROLE personel, rapor;
@@ -150,6 +152,19 @@ SELECT 1, CASE WHEN n % 2 = 0 THEN 'GELEN' ELSE 'GIDEN' END,
        now() - make_interval(mins => n), 'mesaj ' || n
   FROM generate_series(1, 60) n;
 INSERT INTO mesaj (musteri_id, yon, icerik) VALUES (2, 'GELEN', 'merhaba');
+
+-- Ek servis kayıtları (yukarıdaki kimlikleri kaydırmamak için sonda):
+--   3: garanti km'si aşılmış Tucson'da açık arıza; 4: kapanmış kaza kaydı
+INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak) VALUES
+  (2, 1, 'SERVIS_GIRIS', 3, 'PNL00000000000005', (:'gecmis' || ' 12:00')::timestamp, (:'gecmis' || ' 12:30')::timestamp, 'TAMAMLANDI', 'PANEL'),
+  (2, 1, 'SERVIS_GIRIS', 3, 'PNL00000000000005', (:'gecmis' || ' 13:00')::timestamp, (:'gecmis' || ' 13:30')::timestamp, 'TAMAMLANDI', 'PANEL');
+INSERT INTO servis_kaydi (acilis_randevu_id, sorumlu_calisan_id, sebep, giris_kilometresi, tahmini_teslim_tarihi) VALUES
+  (7, 3, 'ARIZA', 160000, NULL),
+  (8, 3, 'KAZA',  160500, :'gecmis'::date + 1);
+INSERT INTO servis_durum_gecmisi (servis_kaydi_id, durum, zaman) VALUES
+  (3, 'INCELENIYOR', :'gecmis'::date + time '12:30'),
+  (4, 'TESLIME_HAZIR', :'gecmis'::date + time '14:00'),
+  (4, 'TAMAMLANDI', :'gecmis'::date + time '17:00');
 SQL
 
 echo "==> Backend başlatılıyor (port $HTTP_PORT)..."
@@ -471,6 +486,34 @@ bekle "Olmayan VIN 404" 404 'Araç bulunamadı' -H "$AUTH" "$TABAN/panel/arac/XX
 bekle "17 karakter olmayan VIN 404 YOL_YOK" 404 '"kod":"YOL_YOK"' -H "$AUTH" "$TABAN/panel/arac/PNL1"
 bekle "VIN'de özel karakter 404 YOL_YOK" 404 '"kod":"YOL_YOK"' -H "$AUTH" "$TABAN/panel/arac/PNL0000000000000%27"
 bekle "POST /panel/arac 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' -X POST -H "$AUTH" "$TABAN/panel/arac"
+
+# ============================================================================
+echo "--- GET /panel/servis ---"
+bekle "Varsayılan: oturumdaki şubenin servis kayıtları" 200 '"sube_id":1,"toplam":4' -H "$AUTH" "$TABAN/panel/servis"
+bekle "Açık kayıtlar önce, tahmini teslim tarihine göre" 200 '"servisler":[{"servis_kaydi_id":1,' -H "$AUTH" "$TABAN/panel/servis"
+bekle "Satır araç, model, müşteri ve masrafı taşır" 200 \
+  '"servis_kaydi_id":1,"sube_id":1,"arac_vin":"PNL00000000000004","plaka":"06ABC123","model_adi":"Ioniq 5","musteri_id":1,"musteri":"Ali Veli","sebep":"ARIZA"' \
+  -H "$AUTH" "$TABAN/panel/servis"
+bekle "Yalnızca açık kayıtlar" 200 '"toplam":3' -H "$AUTH" "$TABAN/panel/servis?acik=true"
+bekle "Yalnızca kapanmış kayıtlar" 200 '"toplam":1,"servisler":[{"servis_kaydi_id":4' -H "$AUTH" "$TABAN/panel/servis?acik=false"
+bekle "Gecikenler (tahmini tarih geçmiş, açık)" 200 '"toplam":1,"servisler":[{"servis_kaydi_id":1' -H "$AUTH" "$TABAN/panel/servis?gecikti=true"
+bekle "Plaka ile arama tüm şubelerde" 200 '"toplam":3' -H "$AUTH" "$TABAN/panel/servis?ara=34xyz789"
+bekle "Başka şubede servis yok" 200 '"toplam":0' -H "$AUTH" "$TABAN/panel/servis?sube_id=2"
+bekle "acik=evet 400 (true/false)" 400 'true veya false' -H "$AUTH" "$TABAN/panel/servis?acik=evet"
+
+echo "--- GET /panel/servis/{id} ---"
+bekle "Detay: sorumlu çalışan, şikâyet ve masraf kırılımı" 200 '"sorumlu_calisan":"Deniz Usta","sikayet_aciklama":"Şarj olmuyor"' \
+  -H "$AUTH" "$TABAN/panel/servis/1"
+bekle "Detay: durum geçmişi zaman sırasıyla" 200 '"durum_gecmisi":[{"durum":"INCELENIYOR","zaman":"'"$GECMIS"'T10:30","aciklama":null},{"durum":"ISLEMDE"' \
+  -H "$AUTH" "$TABAN/panel/servis/1"
+bekle "Detay: işlemler" 200 '"islemler":[{"islem_id":1,"islem_adi":"Arıza tespiti","ucret":1500,"odeme_kaynagi":"MUSTERI","aciklama":null}]' \
+  -H "$AUTH" "$TABAN/panel/servis/1"
+bekle "Kaza kaydında sigorta bilgisi" 200 '"sigorta":{"sirket_id":1,"sirket":"Test Sigorta","dosya_no":"D-1","eksper":null,"onaylanan_tutar":9000}' \
+  -H "$AUTH" "$TABAN/panel/servis/2"
+bekle "Sigortasız kayıtta sigorta null" 200 '"sigorta":null' -H "$AUTH" "$TABAN/panel/servis/1"
+bekle "Masraf kırılımı (sigorta payı)" 200 '"toplam_masraf":9000,"musteri_payi":0,"garanti_payi":0,"sigorta_payi":9000' \
+  -H "$AUTH" "$TABAN/panel/servis/2"
+bekle "Olmayan servis 404" 404 'Servis kaydı bulunamadı' -H "$AUTH" "$TABAN/panel/servis/999"
 
 # ============================================================================
 echo "--- Başlangıç ve yapılandırma ---"
