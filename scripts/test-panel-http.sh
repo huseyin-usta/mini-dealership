@@ -98,8 +98,9 @@ INSERT INTO calisan (sube_id, ad, soyad, departman, eposta, kullanici_adi, sifre
   (1, 'Eski',  'Çalışan', 'SATIS',  'eski@x',   'eski',    :'hash', false, '2020-01-01'),
   (2, 'Kerem', 'Kadıköy', 'SATIS',  'kerem@x',  'kadikoy', :'hash', true,  '2024-01-01'),
   -- Sentetik veride olduğu gibi bcrypt biçiminde olmayan hash: 500 değil 401 dönmeli
-  (1, 'Bozuk', 'Hash',    'SATIS',  'bozuk@x',  'bozuk',   'gecersiz-hash', true, '2024-01-01');
-INSERT INTO calisan_yetkinlik VALUES (1, 1, '2024-01-01', NULL);
+  (1, 'Bozuk', 'Hash',    'SATIS',  'bozuk@x',  'bozuk',   'gecersiz-hash', true, '2024-01-01'),
+  (1, 'Cansu', 'Satıcı',  'SATIS',  'cansu@x',  'cansu',   :'hash', true,  '2024-01-01');
+INSERT INTO calisan_yetkinlik VALUES (1, 1, '2024-01-01', NULL), (7, 1, '2024-01-01', NULL);
 
 INSERT INTO musteri (ad, soyad, telefon) VALUES
   ('Ali', 'Veli', '+905550000001'), ('Zeynep', 'Kaya', '+905550000002'), (NULL, NULL, '+905550000003');
@@ -139,7 +140,9 @@ INSERT INTO servis_sigorta (servis_kaydi_id, sirket_id, dosya_no, onaylanan_tuta
 INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak) VALUES
   (1, 1, 'TEST_SURUSU',   1, 'PNL00000000000001', (:'gun' || ' 10:00')::timestamp, (:'gun' || ' 11:00')::timestamp, 'PLANLANDI', 'WHATSAPP'),
   (2, 1, 'ARAC_INCELEME', 2, NULL,                (:'gun' || ' 11:00')::timestamp, (:'gun' || ' 12:00')::timestamp, 'PLANLANDI', 'PANEL'),
-  (3, 2, 'ARAC_INCELEME', 5, NULL,                (:'gun' || ' 10:00')::timestamp, (:'gun' || ' 11:00')::timestamp, 'PLANLANDI', 'WHATSAPP');
+  (3, 2, 'ARAC_INCELEME', 5, NULL,                (:'gun' || ' 10:00')::timestamp, (:'gun' || ' 11:00')::timestamp, 'PLANLANDI', 'WHATSAPP'),
+  -- Geçmişte kalmış, hâlâ PLANLANDI: personel TAMAMLANDI/GELMEDI işaretler
+  (2, 1, 'ARAC_INCELEME', 2, NULL,                (:'gecmis' || ' 14:00')::timestamp, (:'gecmis' || ' 15:00')::timestamp, 'PLANLANDI', 'PANEL');
 
 -- Bot konuşmaları: müşteri 1'e 60 mesaj (sayfalama), müşteri 2'ye 1 mesaj
 INSERT INTO mesaj (musteri_id, yon, zaman, icerik)
@@ -291,6 +294,24 @@ fi
 # ============================================================================
 # PANEL_SENARYOLARI (uç bazında bölümler aşağıya eklenir)
 
+# ============================================================================
+echo "--- GET /panel/katalog ---"
+bekle "Katalog şubeleri listeler" 200 '"subeler":[{"sube_id":1,"sehir":"Ankara","ad":"Çankaya"}' \
+  -H "$AUTH" "$TABAN/panel/katalog"
+bekle "Tür araç gerektirip gerektirmediğini taşır" 200 \
+  '"tur_kodu":"TEST_SURUSU","ad":"Test Sürüşü","sure_dakika":60,"departman":"SATIS","arac_gerekli":true' \
+  -H "$AUTH" "$TABAN/panel/katalog"
+bekle "Çalışan yetkinlikleriyle döner" 200 \
+  '"calisan_id":1,"ad":"Ayşe","soyad":"Satıcı","sube_id":1,"departman":"SATIS","yetkinlikler":["TEST_SURUSU"]' \
+  -H "$AUTH" "$TABAN/panel/katalog"
+yok "Pasif çalışan katalogda yok" '"Eski"' -H "$AUTH" "$TABAN/panel/katalog"
+yok "Katalog şifre hash'i taşımaz" 'sifre' -H "$AUTH" "$TABAN/panel/katalog"
+bekle "Katalog modelleri listeler" 200 '"modeller":[{"model_id":1,"ad":"Ioniq 5"},{"model_id":2,"ad":"Tucson"}]' \
+  -H "$AUTH" "$TABAN/panel/katalog"
+bekle "Katalogda bilinmeyen parametre 400" 400 'Bilinmeyen parametre: x' -H "$AUTH" "$TABAN/panel/katalog?x=1"
+bekle "POST /panel/katalog 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' -X POST -H "$AUTH" "$TABAN/panel/katalog"
+
+# ============================================================================
 # ============================================================================
 echo "--- Başlangıç ve yapılandırma ---"
 baslat $((HTTP_PORT + 1)) /tmp/md-panel-kisa.log \
