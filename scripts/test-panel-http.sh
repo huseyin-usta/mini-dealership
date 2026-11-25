@@ -1,0 +1,340 @@
+#!/bin/sh
+# Panel API HTTP Test Paketi (docs/api/panel-sozlesmesi.md)
+#
+# Her senaryo, tarayıcıdaki panelin yapacağı gibi GERÇEK HTTP isteğiyle denenir:
+# geçici PostgreSQL + gerçek backend JAR + gerçek panel login rolü (NOINHERIT,
+# personel + rapor üyesi). Yanıt durumu ve gövdesi karşılaştırılır.
+#
+# Gereksinim: Docker, Java 17, Python 3
+# Kullanım:  ./scripts/test-panel-http.sh [--derleme-atla]
+set -e
+cd "$(dirname "$0")/.."
+
+DERLEME_ATLA=0
+[ "$1" = "--derleme-atla" ] && DERLEME_ATLA=1
+
+PW=$(openssl rand -hex 12)
+BOTPW=$(openssl rand -hex 12)
+PANELPW=$(openssl rand -hex 12)
+BOTTOKEN=$(openssl rand -hex 32)
+SIFRE='Panel-Test-2026!'
+CONTAINER=md-test-panel-http-tmp
+PORT=5437
+HTTP_PORT=8097
+JAR=backend/target/mini-dealership-backend.jar
+LOG=/tmp/md-panel-test.log
+
+temizle() {
+  for p in ${SRV_PID:-} ${SRV2_PID:-} ${SRV3_PID:-}; do
+    kill "$p" 2>/dev/null || true; wait "$p" 2>/dev/null || true
+  done
+  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+}
+trap temizle EXIT
+
+if [ "$DERLEME_ATLA" = 0 ]; then
+  echo "==> Backend derleniyor..."
+  ( cd backend && ./mvnw -q clean package -DskipTests )
+fi
+[ -f "$JAR" ] || { echo "HATA: $JAR yok; önce derleyin" >&2; exit 1; }
+
+# Tarihler (GNU/BSD date farkına takılmamak için Python):
+#   GUN  : gelecekteki bir Çarşamba (randevu listeleme/ekleme)
+#   GECMIS: geçmişteki bir Salı (servis kayıtlarının açılış randevusu)
+GUN=$(python3 -c 'import datetime as d; t=d.date.today()+d.timedelta(days=7); print(t+d.timedelta(days=(2-t.weekday())%7))')
+GECMIS=$(python3 -c 'import datetime as d; t=d.date.today()-d.timedelta(days=14); print(t+d.timedelta(days=(1-t.weekday())%7))')
+
+echo "==> PostgreSQL 17 test konteyneri başlatılıyor..."
+docker run --rm -d --name "$CONTAINER" -e POSTGRES_PASSWORD="$PW" -p 127.0.0.1:$PORT:5432 \
+  postgres:17-alpine >/dev/null
+hazir=0
+while [ "$hazir" -eq 0 ]; do
+  if [ "$(docker logs "$CONTAINER" 2>&1 | grep -c 'ready to accept connections')" -ge 2 ] \
+     && docker exec "$CONTAINER" psql -U postgres -d postgres -tAc 'SELECT 1' >/dev/null 2>&1; then
+    hazir=1
+  else
+    sleep 1
+  fi
+done
+
+PSQL="docker exec -i $CONTAINER psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q"
+
+echo "==> Şema dosyaları (db/*.sql) yükleniyor..."
+for f in db/*.sql; do $PSQL < "$f"; done
+
+HASH=$(printf '%s' "$SIFRE" | java -cp "$JAR" tr.edu.etu.dealership.panel.SifreHash)
+
+echo "==> Test verisi yükleniyor (GUN=$GUN, GECMIS=$GECMIS)..."
+$PSQL -v hash="$HASH" -v gun="$GUN" -v gecmis="$GECMIS" \
+      -v botpw="$BOTPW" -v panelpw="$PANELPW" << 'SQL'
+CREATE ROLE bot_app LOGIN PASSWORD :'botpw' IN ROLE bot;
+-- Panel login rolü: NOINHERIT, SET ROLE yapmadan hiçbir yetkisi yok (fail-closed)
+CREATE ROLE panel_app LOGIN NOINHERIT PASSWORD :'panelpw' IN ROLE personel, rapor;
+
+INSERT INTO sube (sehir, ad) VALUES ('Ankara', 'Çankaya'), ('İstanbul', 'Kadıköy');
+INSERT INTO mesai (gun, acilis, kapanis)
+SELECT g, '08:00'::time, '18:00'::time FROM generate_series(1, 6) g;
+INSERT INTO yetkinlik (kod, ad) VALUES ('TEST_SURUSU', 'Test Sürüşü Yetkisi');
+INSERT INTO randevu_turu (tur_kodu, ad, sure_dakika, departman, yetkinlik_id) VALUES
+  ('TEST_SURUSU',     'Test Sürüşü',       60, 'SATIS',  1),
+  ('ARAC_INCELEME',   'Araç İnceleme',     60, 'SATIS',  NULL),
+  ('TESLIMAT',        'Yeni Araç Teslimi', 60, 'SATIS',  NULL),
+  ('PERIYODIK_BAKIM', 'Periyodik Bakım',   60, 'SERVIS', NULL),
+  ('SERVIS_GIRIS',    'Servise Giriş',     30, 'SERVIS', NULL),
+  ('SERVIS_TESLIM',   'Servisten Teslim',  30, 'SERVIS', NULL);
+INSERT INTO tur_saat (tur_kodu, gun, baslangic, bitis)
+SELECT t.tur_kodu, g, '09:00'::time, '17:00'::time
+  FROM randevu_turu t CROSS JOIN generate_series(1, 6) g;
+
+INSERT INTO model (ad, garanti_yil, garanti_km) VALUES ('Ioniq 5', 3, 100000), ('Tucson', 5, 150000);
+INSERT INTO versiyon (model_id, paket_adi, model_yili, liste_fiyati) VALUES
+  (1, 'Advance', 2024, 2000000), (2, 'Elite', 2024, 2350000);
+INSERT INTO versiyon_ozellik VALUES (1, 'Menzil', '480 km'), (1, 'Batarya', '77 kWh');
+
+INSERT INTO calisan (sube_id, ad, soyad, departman, eposta, kullanici_adi, sifre_hash, aktif_mi, ise_giris_tarihi) VALUES
+  (1, 'Ayşe',  'Satıcı',  'SATIS',  'ayse@x',   'ayse',    :'hash', true,  '2024-01-01'),
+  (1, 'Burak', 'Satıcı',  'SATIS',  'burak@x',  'burak',   :'hash', true,  '2024-01-01'),
+  (1, 'Deniz', 'Usta',    'SERVIS', 'deniz@x',  'deniz',   :'hash', true,  '2024-01-01'),
+  (1, 'Eski',  'Çalışan', 'SATIS',  'eski@x',   'eski',    :'hash', false, '2020-01-01'),
+  (2, 'Kerem', 'Kadıköy', 'SATIS',  'kerem@x',  'kadikoy', :'hash', true,  '2024-01-01'),
+  -- Sentetik veride olduğu gibi bcrypt biçiminde olmayan hash: 500 değil 401 dönmeli
+  (1, 'Bozuk', 'Hash',    'SATIS',  'bozuk@x',  'bozuk',   'gecersiz-hash', true, '2024-01-01');
+INSERT INTO calisan_yetkinlik VALUES (1, 1, '2024-01-01', NULL);
+
+INSERT INTO musteri (ad, soyad, telefon) VALUES
+  ('Ali', 'Veli', '+905550000001'), ('Zeynep', 'Kaya', '+905550000002'), (NULL, NULL, '+905550000003');
+
+INSERT INTO arac (vin, versiyon_id, sube_id, renk, durum, tahmini_varis_tarihi, plaka, musteri_id) VALUES
+  ('PNL00000000000001', 1, 1, 'Beyaz',   'STOKTA',  NULL,              NULL,       NULL),
+  ('PNL00000000000002', 1, 1, 'Siyah',   'STOKTA',  NULL,              NULL,       NULL),
+  ('PNL00000000000003', 2, 1, 'Gri',     'YOLDA',   current_date + 10, NULL,       NULL),
+  ('PNL00000000000004', 1, 1, 'Mavi',    'SATILDI', NULL,              '06ABC123', 1),
+  ('PNL00000000000005', 2, 2, 'Kırmızı', 'SATILDI', NULL,              '34XYZ789', 2),
+  ('PNL00000000000006', 1, 2, 'Beyaz',   'STOKTA',  NULL,              NULL,       NULL);
+INSERT INTO stok_hareketi (arac_vin, hareket_turu, zaman, kaynak_sube_id, hedef_sube_id)
+SELECT vin, 'GELIS', now() - interval '400 days', NULL, sube_id FROM arac;
+INSERT INTO stok_hareketi (arac_vin, hareket_turu, zaman, kaynak_sube_id, hedef_sube_id) VALUES
+  ('PNL00000000000004', 'SATIS', now() - interval '200 days', 1, NULL),
+  ('PNL00000000000005', 'SATIS', now() - interval '300 days', 2, NULL);
+
+-- Geçmiş servis girişleri (servis kayıtlarının açılış randevuları)
+INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak) VALUES
+  (1, 1, 'SERVIS_GIRIS', 3, 'PNL00000000000004', (:'gecmis' || ' 10:00')::timestamp, (:'gecmis' || ' 10:30')::timestamp, 'TAMAMLANDI', 'PANEL'),
+  (2, 1, 'SERVIS_GIRIS', 3, 'PNL00000000000005', (:'gecmis' || ' 11:00')::timestamp, (:'gecmis' || ' 11:30')::timestamp, 'TAMAMLANDI', 'WHATSAPP');
+INSERT INTO servis_kaydi (acilis_randevu_id, sorumlu_calisan_id, sebep, giris_kilometresi, tahmini_teslim_tarihi, sikayet_aciklama) VALUES
+  (1, 3, 'ARIZA', 12000, :'gecmis'::date + 2, 'Şarj olmuyor'),
+  (2, 3, 'KAZA',  30000, current_date + 5,   'Ön tampon');
+INSERT INTO servis_durum_gecmisi (servis_kaydi_id, durum, zaman, aciklama) VALUES
+  (1, 'INCELENIYOR', :'gecmis'::date + time '10:30', NULL),
+  (1, 'ISLEMDE',     :'gecmis'::date + time '15:00', 'Parça geldi'),
+  (2, 'INCELENIYOR', :'gecmis'::date + time '11:30', NULL),
+  (2, 'EKSPERTIZ_BEKLENIYOR', :'gecmis'::date + time '16:00', NULL);
+INSERT INTO servis_islem (servis_kaydi_id, islem_adi, ucret, odeme_kaynagi) VALUES
+  (1, 'Arıza tespiti', 1500, 'MUSTERI'),
+  (2, 'Tampon değişimi', 9000, 'SIGORTA');
+INSERT INTO sigorta_sirketi (ad) VALUES ('Test Sigorta');
+INSERT INTO servis_sigorta (servis_kaydi_id, sirket_id, dosya_no, onaylanan_tutar) VALUES (2, 1, 'D-1', 9000);
+
+-- Gelecek gün (GUN): şube 1'de iki, şube 2'de bir randevu
+INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak) VALUES
+  (1, 1, 'TEST_SURUSU',   1, 'PNL00000000000001', (:'gun' || ' 10:00')::timestamp, (:'gun' || ' 11:00')::timestamp, 'PLANLANDI', 'WHATSAPP'),
+  (2, 1, 'ARAC_INCELEME', 2, NULL,                (:'gun' || ' 11:00')::timestamp, (:'gun' || ' 12:00')::timestamp, 'PLANLANDI', 'PANEL'),
+  (3, 2, 'ARAC_INCELEME', 5, NULL,                (:'gun' || ' 10:00')::timestamp, (:'gun' || ' 11:00')::timestamp, 'PLANLANDI', 'WHATSAPP');
+
+-- Bot konuşmaları: müşteri 1'e 60 mesaj (sayfalama), müşteri 2'ye 1 mesaj
+INSERT INTO mesaj (musteri_id, yon, zaman, icerik)
+SELECT 1, CASE WHEN n % 2 = 0 THEN 'GELEN' ELSE 'GIDEN' END,
+       now() - make_interval(mins => n), 'mesaj ' || n
+  FROM generate_series(1, 60) n;
+INSERT INTO mesaj (musteri_id, yon, icerik) VALUES (2, 'GELEN', 'merhaba');
+SQL
+
+echo "==> Backend başlatılıyor (port $HTTP_PORT)..."
+# baslat <port> <log> [ek env...]: backend'i arka planda başlatır, PID'i SON_PID'e yazar
+baslat() {
+  bport=$1; blog=$2; shift 2
+  env DB_HOST=127.0.0.1 DB_PORT=$PORT DB_NAME=postgres \
+    BOT_DB_USER=bot_app BOT_DB_PASS="$BOTPW" BOT_TOKEN="$BOTTOKEN" \
+    BIND_ADRESI=127.0.0.1 HTTP_PORT="$bport" "$@" \
+    java -jar "$JAR" > "$blog" 2>&1 &
+  SON_PID=$!
+  for i in $(seq 1 40); do
+    curl -fsS "http://127.0.0.1:$bport/saglik" >/dev/null 2>&1 && return 0
+    sleep 0.5
+  done
+  echo "HATA: backend başlamadı. Log:" >&2; cat "$blog" >&2; exit 1
+}
+baslat "$HTTP_PORT" "$LOG" PANEL_DB_USER=panel_app PANEL_DB_PASS="$PANELPW"
+SRV_PID=$SON_PID
+
+echo "==> HTTP senaryoları çalıştırılıyor..."
+TABAN="http://127.0.0.1:$HTTP_PORT"
+JSON='Content-Type: application/json'
+GECEN=0
+KALAN=0
+BASARISIZLAR=""
+
+gec() { echo "[PASS] $1"; GECEN=$((GECEN + 1)); }
+kal() {
+  echo "[FAIL] $1"; [ -n "$2" ] && echo "       $2"
+  KALAN=$((KALAN + 1)); BASARISIZLAR="$BASARISIZLAR
+  - $1"
+}
+
+# bekle <ad> <beklenen_durum> <beklenen_govde_parcasi> <curl_arg...>
+bekle() {
+  ad=$1; durum=$2; parca=$3; shift 3
+  yanit=$(curl -s -w '\n%{http_code}' "$@")
+  kod=$(printf '%s' "$yanit" | tail -n1)
+  govde=$(printf '%s' "$yanit" | sed '$d')
+  if [ "$kod" = "$durum" ] && printf '%s' "$govde" | grep -qF -- "$parca"; then
+    gec "$ad"
+  else
+    kal "$ad" "beklenen: HTTP $durum + '$parca' | gelen: HTTP $kod | gövde: $(printf '%s' "$govde" | cut -c1-400)"
+  fi
+}
+
+# yok <ad> <govdede_olmamasi_gereken> <curl_arg...>
+yok() {
+  ad=$1; parca=$2; shift 2
+  govde=$(curl -s "$@")
+  if printf '%s' "$govde" | grep -qF -- "$parca"; then
+    kal "$ad" "gövdede olmamalıydı: '$parca'"
+  else
+    gec "$ad"
+  fi
+}
+
+# giris <kullanici_adi> [port]: oturum anahtarını yazdırır (başarısızsa boş)
+giris() {
+  curl -s -X POST -H "$JSON" -d "{\"kullanici_adi\":\"$1\",\"sifre\":\"$SIFRE\"}" \
+    "http://127.0.0.1:${2:-$HTTP_PORT}/panel/giris" \
+    | sed -n 's/.*"oturum":"\([^"]*\)".*/\1/p'
+}
+
+# ============================================================================
+echo "--- Giriş / çıkış ---"
+bekle "Doğru şifre: oturum ve çalışan bilgisi döner" 200 \
+  '"calisan":{"calisan_id":1,"ad":"Ayşe","soyad":"Satıcı","sube_id":1,"departman":"SATIS"}' \
+  -X POST -H "$JSON" -d "{\"kullanici_adi\":\"ayse\",\"sifre\":\"$SIFRE\"}" "$TABAN/panel/giris"
+bekle "Yanlış şifre 401 GIRIS_HATALI" 401 '"kod":"GIRIS_HATALI"' \
+  -X POST -H "$JSON" -d '{"kullanici_adi":"burak","sifre":"yanlis"}' "$TABAN/panel/giris"
+bekle "Olmayan kullanıcı da aynı hatayı alır (ad sızmaz)" 401 '"kod":"GIRIS_HATALI"' \
+  -X POST -H "$JSON" -d "{\"kullanici_adi\":\"hayalet\",\"sifre\":\"$SIFRE\"}" "$TABAN/panel/giris"
+bekle "İşten ayrılmış (aktif_mi=false) çalışan giremez" 401 '"kod":"GIRIS_HATALI"' \
+  -X POST -H "$JSON" -d "{\"kullanici_adi\":\"eski\",\"sifre\":\"$SIFRE\"}" "$TABAN/panel/giris"
+bekle "bcrypt biçiminde olmayan hash 500 değil 401" 401 '"kod":"GIRIS_HATALI"' \
+  -X POST -H "$JSON" -d "{\"kullanici_adi\":\"bozuk\",\"sifre\":\"$SIFRE\"}" "$TABAN/panel/giris"
+bekle "Şifre eksik 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
+  -X POST -H "$JSON" -d '{"kullanici_adi":"ayse"}' "$TABAN/panel/giris"
+bekle "Bilinmeyen alan 400" 400 'Bilinmeyen alan: rol' \
+  -X POST -H "$JSON" -d "{\"kullanici_adi\":\"ayse\",\"sifre\":\"$SIFRE\",\"rol\":\"admin\"}" "$TABAN/panel/giris"
+bekle "Gövde JSON değil 400" 400 'geçerli JSON değil' \
+  -X POST -H "$JSON" -d 'kullanici_adi=ayse' "$TABAN/panel/giris"
+bekle "Boş gövde 400" 400 'gövdesi boş' -X POST "$TABAN/panel/giris"
+bekle "Şifre sayı (metin değil) 400" 400 'sifre metin olmalı' \
+  -X POST -H "$JSON" -d '{"kullanici_adi":"ayse","sifre":1234}' "$TABAN/panel/giris"
+bekle "GET /panel/giris 405 (Allow: POST)" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' "$TABAN/panel/giris"
+
+TOKEN=$(giris ayse)
+[ -n "$TOKEN" ] && gec "Oturum anahtarı alındı" || kal "Oturum anahtarı alınamadı"
+AUTH="Authorization: Bearer $TOKEN"
+
+bekle "Oturumsuz istek 401 OTURUM_YOK" 401 '"kod":"OTURUM_YOK"' "$TABAN/panel/katalog"
+bekle "Uydurma anahtar 401" 401 '"kod":"OTURUM_YOK"' -H 'Authorization: Bearer uydurma' "$TABAN/panel/katalog"
+bekle "Bearer öneki olmadan 401" 401 '"kod":"OTURUM_YOK"' -H "Authorization: $TOKEN" "$TABAN/panel/katalog"
+bekle "Oturumsuz tanımsız yol da 401 (yol varlığı sızmaz)" 401 '"kod":"OTURUM_YOK"' "$TABAN/panel/gizli-yol"
+bekle "Oturumlu tanımsız yol 404 YOL_YOK" 404 '"kod":"YOL_YOK"' -H "$AUTH" "$TABAN/panel/gizli-yol"
+
+if curl -s -D - -o /dev/null -X POST -H "$JSON" -d '{"kullanici_adi":"x","sifre":"y"}' "$TABAN/panel/giris" \
+   | grep -qi '^cache-control: no-store'; then
+  gec "Yanıtlar önbelleğe alınmaz (Cache-Control: no-store)"
+else
+  kal "Cache-Control: no-store başlığı yok"
+fi
+
+# Kaba kuvvet: 5 hatalı denemeden sonra doğru şifre bile kilitli
+for n in 1 2 3 4 5; do
+  curl -s -o /dev/null -X POST -H "$JSON" -d '{"kullanici_adi":"kadikoy","sifre":"yanlis"}' "$TABAN/panel/giris"
+done
+bekle "5 hatalı denemeden sonra hesap kilitli (429 COK_DENEME)" 429 '"kod":"COK_DENEME"' \
+  -X POST -H "$JSON" -d "{\"kullanici_adi\":\"kadikoy\",\"sifre\":\"$SIFRE\"}" "$TABAN/panel/giris"
+bekle "Kilit yalnızca o kullanıcı adını etkiler" 200 '"oturum"' \
+  -X POST -H "$JSON" -d "{\"kullanici_adi\":\"burak\",\"sifre\":\"$SIFRE\"}" "$TABAN/panel/giris"
+
+CIKIS_TOKEN=$(giris burak)
+bekle "Çıkış 200" 200 '"cikis":true' -X POST -H "Authorization: Bearer $CIKIS_TOKEN" "$TABAN/panel/cikis"
+bekle "Çıkıştan sonra aynı anahtar geçersiz" 401 '"kod":"OTURUM_YOK"' \
+  -H "Authorization: Bearer $CIKIS_TOKEN" "$TABAN/panel/katalog"
+bekle "Oturumsuz çıkış da 200 (bilgi sızmaz)" 200 '"cikis":true' -X POST "$TABAN/panel/cikis"
+
+# ============================================================================
+echo "--- Veritabanı rolü (fail-closed) ---"
+if docker exec "$CONTAINER" psql -U panel_app -d postgres -tAc 'SELECT count(*) FROM musteri' >/dev/null 2>&1; then
+  kal "panel_app SET ROLE yapmadan musteri okuyabildi (NOINHERIT çalışmıyor)"
+else
+  gec "panel_app SET ROLE yapmadan hiçbir tabloyu okuyamaz"
+fi
+if docker exec "$CONTAINER" psql -U panel_app -d postgres -tAc \
+     'BEGIN; SET LOCAL ROLE personel; SELECT sifre_hash FROM calisan LIMIT 1' >/dev/null 2>&1; then
+  kal "personel rolü şifre hash'ini okuyabildi"
+else
+  gec "personel rolü şifre hash'ini okuyamaz (yalnızca fn_panel_giris)"
+fi
+if docker exec "$CONTAINER" psql -U panel_app -d postgres -tAc \
+     'BEGIN; SET LOCAL ROLE rapor; SELECT telefon FROM musteri LIMIT 1' >/dev/null 2>&1; then
+  kal "rapor rolü ham müşteri tablosunu okuyabildi"
+else
+  gec "rapor rolü ham müşteri tablosunu okuyamaz (yalnızca maskeli view)"
+fi
+
+# ============================================================================
+# PANEL_SENARYOLARI (uç bazında bölümler aşağıya eklenir)
+
+# ============================================================================
+echo "--- Başlangıç ve yapılandırma ---"
+baslat $((HTTP_PORT + 1)) /tmp/md-panel-kisa.log \
+  PANEL_DB_USER=panel_app PANEL_DB_PASS="$PANELPW" PANEL_OTURUM_SANIYE=2
+SRV2_PID=$SON_PID
+KISA=$(giris ayse $((HTTP_PORT + 1)))
+# Geçerli oturum tanımsız yolda 404 alır (401 değil): oturum kabul edildi demektir
+bekle "Oturum süresi içinde geçerli" 404 '"kod":"YOL_YOK"' \
+  -H "Authorization: Bearer $KISA" "http://127.0.0.1:$((HTTP_PORT + 1))/panel/gizli-yol"
+sleep 3
+bekle "Süresi dolan oturum 401" 401 '"kod":"OTURUM_YOK"' \
+  -H "Authorization: Bearer $KISA" "http://127.0.0.1:$((HTTP_PORT + 1))/panel/gizli-yol"
+kill "$SRV2_PID" 2>/dev/null || true; wait "$SRV2_PID" 2>/dev/null || true; SRV2_PID=
+
+baslat $((HTTP_PORT + 2)) /tmp/md-panel-kapali.log
+SRV3_PID=$SON_PID
+bekle "PANEL_DB_USER yoksa panel kapalı, bot/sağlık çalışır" 200 'ok' "http://127.0.0.1:$((HTTP_PORT + 2))/saglik"
+kod=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$JSON" \
+  -d "{\"kullanici_adi\":\"ayse\",\"sifre\":\"$SIFRE\"}" "http://127.0.0.1:$((HTTP_PORT + 2))/panel/giris")
+[ "$kod" = "404" ] && gec "PANEL_DB_USER yoksa /panel/giris yok (404)" || kal "Panel kapalıyken /panel/giris $kod döndü"
+kill "$SRV3_PID" 2>/dev/null || true; wait "$SRV3_PID" 2>/dev/null || true; SRV3_PID=
+
+if env -u PANEL_DB_PASS DB_HOST=127.0.0.1 DB_PORT=$PORT DB_NAME=postgres \
+     BOT_DB_USER=bot_app BOT_DB_PASS="$BOTPW" BOT_TOKEN="$BOTTOKEN" \
+     HTTP_PORT=$((HTTP_PORT + 3)) PANEL_DB_USER=panel_app \
+     java -jar "$JAR" > /tmp/md-panel-sifresiz.log 2>&1; then
+  kal "PANEL_DB_USER verilip şifre verilmeyince uygulama başladı"
+elif grep -qF 'PANEL_DB_PASS' /tmp/md-panel-sifresiz.log; then
+  gec "PANEL_DB_USER var, PANEL_DB_PASS yoksa uygulama başlamaz"
+else
+  kal "Şifresiz panel başlangıcı başka bir nedenle düştü"
+fi
+
+for sir in "$SIFRE" "$PANELPW"; do
+  if grep -qF -- "$sir" "$LOG"; then kal "Gizli değer log'a sızdı"; else gec "Gizli değer log'a sızmıyor"; fi
+done
+
+echo ""
+echo "=========================================="
+echo "   GEÇEN: $GECEN   KALAN: $KALAN"
+if [ "$KALAN" -eq 0 ]; then
+  echo "   TÜM PANEL HTTP TESTLERİ BAŞARIYLA GEÇTİ"
+else
+  echo "   BAŞARISIZ TESTLER:$BASARISIZLAR"
+fi
+echo "=========================================="
+[ "$KALAN" -eq 0 ]
