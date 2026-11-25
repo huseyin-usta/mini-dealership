@@ -1,10 +1,10 @@
-# Panel API Sözleşmesi (TASLAK)
+# Panel API Sözleşmesi
 
 Panel (HTML/JS, tarayıcıda çalışır) ile Java backend arasındaki HTTP sözleşmesi.
 
-> **Durum: taslak.** Panel tarafının ihtiyaç listesidir; backend sahibiyle
-> (Hüseyin) üzerinde anlaşılıp dondurulduktan sonra panel bu sözleşmeye karşı
-> mock ile geliştirilir. Açık kararlar en sonda listelenmiştir.
+> **Durum: kararlar kesinleşti (25 Kasım 2026).** Panel ve panel uçları Şevda'ya
+> devredildi; kararlar en sondaki "Kararlar" bölümündedir. Satış akışı ve
+> servis açma/teslim uçları bu sözleşmenin kapsamı dışındadır.
 
 Menüler spec'teki "Panel menüleri" bölümünden gelir. Panel veritabanına
 **hiç dokunmaz**; bütün kısıtlar PostgreSQL'de (EXCLUDE, trigger, CHECK) kalır,
@@ -135,11 +135,13 @@ model_adi, notlar`. Sıralama: `baslangic`.
 | `telefon` | ✅ | E.164. Müşteri yoksa oluşturulur (`ad`, `soyad` o zaman zorunlu) |
 | `ad`, `soyad` | ❌/✅ | Yeni müşteri için zorunlu |
 | `sube_id`, `tur_kodu`, `baslangic` | ✅ | `baslangic`: `YYYY-MM-DDTHH:MM` |
-| `calisan_id` | ❌ | Verilmezse backend uygun çalışanı atar (bot ile aynı kural) |
-| `arac_vin` | ❌ | Araç gerektiren türde verilmezse bot ile aynı atama kuralı |
+| `calisan_id` | ✅ | Çalışanı personel seçer (katalogdan); uygunluğu DB trigger'ı denetler |
+| `arac_vin` | ❌/✅ | Araç gerektiren türde (`TEST_SURUSU`, `TESLIMAT`, `PERIYODIK_BAKIM`, `SERVIS_GIRIS`, `SERVIS_TESLIM`) zorunlu, diğerlerinde verilmez |
 | `notlar` | ❌ | |
 
-Botla fark: 21 günlük üst sınır yok, çalışan elle seçilebilir. Kontroller
+Botla fark: 21 günlük üst sınır yok; çalışan ve araç otomatik atanmaz, personel
+seçer (bot'un atama kuralları müşteri adına konuşurken gerekli, şubedeki personel
+kimi atadığını bilir). Kontroller
 (mesai, tür saat penceresi, yetkinlik, çakışma) DB trigger'ları ve EXCLUDE
 kısıtlarında olduğu için **aynen geçerlidir**.
 
@@ -165,7 +167,7 @@ engelliyor).
 
 > **Satış akışı** (araç `SATILDI` + stok hareketi + randevu `TAMAMLANDI`, tek
 > transaction) ayrı bir uçtur ve transaction sahibi Hüseyin'dir; burada
-> yalnızca durum değişikliği var. Bkz. açık kararlar.
+> yalnızca durum değişikliği var.
 
 ## 6. Araçlar
 
@@ -240,8 +242,8 @@ Hatalar (`210_trg_servis_garanti` trigger'ından çevrilir):
   (backend kuralı; DB'de kısıt yok).
 
 > Servis kaydı **açma** (`SERVIS_GIRIS` randevusundan) ve **teslim**
-> (`SERVIS_TESLIM`) de panelden yapılacak; kuralları bot tarafındaki
-> SERVIS_TESLIM akışıyla ortak olduğu için Hüseyin'le birlikte eklenecek.
+> (`SERVIS_TESLIM`) bu sözleşmenin kapsamı dışındadır; kuralları bot tarafındaki
+> SERVIS_TESLIM akışıyla ortak olduğu için backend sahibiyle birlikte eklenecek.
 
 ## 9. Müşteriler
 
@@ -290,24 +292,22 @@ zarf yok. Hata olursa normal JSON zarfı döner.
 
 ---
 
-## Açık kararlar (backend sahibiyle konuşulacak)
+## Kararlar
 
-1. **Oturum mu, `PANEL_TOKEN` mı?** Bot sözleşmesi panelin kendi token'ını
-   (`PANEL_TOKEN`) alacağını söylüyor. Panel tarayıcıda çalıştığı için paylaşılan
-   bir token gizli kalamaz; bu taslak bunun yerine çalışan girişiyle oturum
-   öneriyor. Alternatif: panel kendi küçük sunucusundan servis edilir ve token'ı
-   o sunucu ekler — bir bileşen daha demek.
-2. **Excel'i kim üretir?** Taslak: backend (Java, Apache POI) — `rapor` rolüyle
-   maskeleme DB'de garanti. Alternatif: panel JS'te (SheetJS) üretir; o zaman veri
-   `personel` rolüyle gelir ve maskeleme panel koduna kalır. Ders gereksinimi
-   (maskeli rapor rolü) açısından backend daha doğru, ama backend'e bağımlılık
-   ekliyor.
-3. **Şube kısıtı:** `personel` RLS politikası tüm şubeleri gösteriyor (`USING (true)`).
-   Taslakta şube yalnızca varsayılan filtre. Çalışan yalnızca kendi şubesini mi
-   görmeli? Görmeliyse RLS'e `sube_id` koşulu eklenir (DB değişikliği).
-4. **Satış akışı ucu** (`POST /panel/satis`): spec'teki transaction örneği; ucun
-   biçimi transaction sahibine bırakıldı.
-5. **Servis açma/teslim uçları:** bot tarafındaki `SERVIS_TESLIM` kurallarıyla
-   ortak; ayrı bölüm olarak eklenecek.
-6. **Admin ekranı yok:** `admin` rolü şema sahibi (migration); panelde çalışan
-   ekleme/pasifleştirme menüsü spec'te yok. Gerekirse sonradan eklenir.
+1. **Kimlik: çalışan girişi + oturum** (`PANEL_TOKEN` yok). Panel tarayıcıda
+   çalıştığı için paylaşılan bir token gizli kalamaz. Bot sözleşmesindeki
+   `PANEL_TOKEN` notunun yerini bu sözleşmedeki oturum alır.
+2. **Veritabanı bağlantısı:** backend panel için ayrı bir login rolüyle bağlanır
+   (`PANEL_DB_USER` / `PANEL_DB_PASS`). Bu rol `NOINHERIT` ve `personel`,
+   `rapor` rollerinin üyesidir: `SET LOCAL ROLE` yapılmadan **hiçbir tabloyu
+   okuyamaz** (fail-closed). Ortam değişkenleri yoksa panel uçları ve arayüz
+   açılmaz, bot uçları etkilenmez.
+3. **Excel'i backend üretir** (fastexcel, `rapor` rolü). Maskeleme DB rolüyle
+   garanti edilir, panel koduna kalmaz.
+4. **Şube:** tüm personel tüm şubeleri görebilir (RLS `USING (true)` olduğu gibi
+   kalır); oturumdaki şube yalnızca varsayılan filtredir. Gerçek bayide
+   çalışanlar şubeler arası araç/randevu sorar.
+5. **Arayüz:** panel dosyaları (`panel/`) backend JAR'ına gömülür ve aynı
+   adresten (`/`) servis edilir; ayrı sunucu ve CORS yok.
+6. **Kapsam dışı:** satış akışı (`POST /panel/satis`, transaction), servis
+   açma/teslim ve admin ekranları (çalışan ekleme/pasifleştirme).
