@@ -24,6 +24,10 @@ package tr.edu.etu.dealership.config;
  * MISTRAL_URL     (varsayılan https://api.mistral.ai/v1)
  * MISTRAL_EFOR    reasoning_effort: none|low|medium|high (boşsa gönderilmez;
  *                 desteklemeyen modellerde 400 döner)
+ * PANEL_DB_USER   panel login rolü (NOINHERIT, personel + rapor üyesi). Yoksa
+ *                 panel uçları ve arayüz açılmaz; bot uçları etkilenmez
+ * PANEL_DB_PASS   panel login rolünün şifresi (PANEL_DB_USER verildiyse zorunlu)
+ * PANEL_OTURUM_SANIYE  panel oturum süresi (varsayılan 28800 = 8 saat)
  * </pre>
  *
  * <p>Güvenli varsayılan: yalnızca yerel arayüz. Docker'da köprü ayrı bir
@@ -49,6 +53,9 @@ public final class Ayarlar {
     private final String mistralModel;
     private final String mistralUrl;
     private final String mistralEfor;
+    private final String panelDbUser;
+    private final String panelDbPass;
+    private final int panelOturumSaniye;
 
     private Ayarlar(String dbHost, int dbPort, String dbName,
                     String botDbUser, String botDbPass, String botToken,
@@ -56,7 +63,8 @@ public final class Ayarlar {
                     String geminiApiKey, String geminiModel,
                     String geminiUrl, String kendiUrl,
                     String llmSaglayici, String mistralApiKey, String mistralModel,
-                    String mistralUrl, String mistralEfor) {
+                    String mistralUrl, String mistralEfor,
+                    String panelDbUser, String panelDbPass, int panelOturumSaniye) {
         this.dbHost = dbHost;
         this.dbPort = dbPort;
         this.dbName = dbName;
@@ -74,6 +82,9 @@ public final class Ayarlar {
         this.mistralModel = mistralModel;
         this.mistralUrl = mistralUrl;
         this.mistralEfor = mistralEfor;
+        this.panelDbUser = panelDbUser;
+        this.panelDbPass = panelDbPass;
+        this.panelOturumSaniye = panelOturumSaniye;
     }
 
     /** Ortam değişkenlerinden ayarları okur; zorunlu alanlar eksikse açık hata verir. */
@@ -96,7 +107,10 @@ public final class Ayarlar {
                 env("MISTRAL_API_KEY", null),
                 env("MISTRAL_MODEL", "ministral-3b-latest"),
                 env("MISTRAL_URL", "https://api.mistral.ai/v1"),
-                env("MISTRAL_EFOR", null)
+                env("MISTRAL_EFOR", null),
+                env("PANEL_DB_USER", null),
+                env("PANEL_DB_USER", null) == null ? null : zorunlu("PANEL_DB_PASS"),
+                sayi("PANEL_OTURUM_SANIYE", "28800")
         );
     }
 
@@ -156,4 +170,10 @@ public final class Ayarlar {
     public String mistralModel() { return mistralModel; }
     public String mistralUrl() { return mistralUrl; }
     public String mistralEfor() { return mistralEfor; }
+    public String panelDbUser() { return panelDbUser; }
+    public String panelDbPass() { return panelDbPass; }
+    public int panelOturumSaniye() { return panelOturumSaniye; }
+
+    /** Panel uçları açık mı? Panel login rolü tanımlı değilse yalnızca bot çalışır. */
+    public boolean panelAcikMi() { return panelDbUser != null; }
 }

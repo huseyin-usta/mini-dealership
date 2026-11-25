@@ -20,6 +20,7 @@
     <slf4j.version>2.0.13</slf4j.version>
     <logback.version>1.5.6</logback.version>
     <junit.version>5.10.2</junit.version>
+    <jbcrypt.version>0.4</jbcrypt.version>
   </properties>
 
   <dependencies>
@@ -61,6 +62,12 @@
       <version>${logback.version}</version>
     </dependency>
 
+    <!-- Panel girişi: bcrypt şifre doğrulama (calisan.sifre_hash) -->
+    <dependency>
+      <groupId>org.mindrot</groupId>
+      <artifactId>jbcrypt</artifactId>
+      <version>${jbcrypt.version}</version>
+    </dependency>
     <!-- Test -->
     <dependency>
       <groupId>org.junit.jupiter</groupId>
