@@ -1,0 +1,19 @@
+package tr.edu.etu.dealership.panel;
+
+import com.sun.net.httpserver.HttpServer;
+
+/** Panel uçlarını HTTP sunucusuna kaydeder (docs/api/panel-sozlesmesi.md). */
+public final class PanelUclari {
+
+    private PanelUclari() {
+    }
+
+    public static void kaydet(HttpServer sunucu, PanelVeritabani db, Oturumlar oturumlar) {
+        GirisHandler giris = new GirisHandler(db, oturumlar);
+        sunucu.createContext("/panel/giris", giris);
+        sunucu.createContext("/panel/cikis", giris);
+
+        // Tanımsız /panel/* yolları: önce oturum, sonra 404 (yolların varlığı sızmasın).
+        sunucu.createContext("/panel", new PanelHandler(db, oturumlar) { });
+    }
+}

@@ -19,7 +19,12 @@ import tr.edu.etu.dealership.web.HttpYardimci;
 import tr.edu.etu.dealership.web.SlotHandler;
 import tr.edu.etu.dealership.web.SubeHandler;
 
+import tr.edu.etu.dealership.panel.Oturumlar;
+import tr.edu.etu.dealership.panel.PanelUclari;
+import tr.edu.etu.dealership.panel.PanelVeritabani;
+
 import java.io.IOException;
+import java.time.Duration;
 import java.net.InetSocketAddress;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -81,6 +86,24 @@ public final class Main {
 
         sunucu.createContext("/saglik", HttpYardimci.saglik(db));
 
+        // Panel API (docs/api/panel-sozlesmesi.md): panel login rolü tanımlıysa açılır.
+        PanelVeritabani panelDb = null;
+        if (ayarlar.panelAcikMi()) {
+            panelDb = new PanelVeritabani(ayarlar);
+            if (!panelDb.hazirMi()) {
+                LOG.error("Panel veritabanı rolüyle bağlanılamadı ({})", ayarlar.panelDbUser());
+                panelDb.close();
+                db.close();
+                System.exit(1);
+            }
+            PanelUclari.kaydet(sunucu, panelDb,
+                    new Oturumlar(Duration.ofSeconds(ayarlar.panelOturumSaniye())));
+            LOG.info("Panel uçları açık");
+        } else {
+            LOG.warn("PANEL_DB_USER tanımlı değil: panel uçları kapalı");
+        }
+        PanelVeritabani panelDbSon = panelDb;
+
         sunucu.start();
         LOG.info("Backend dinliyor: http://{}:{}", ayarlar.bindAdresi(), ayarlar.httpPort());
 
@@ -89,6 +112,7 @@ public final class Main {
             sunucu.stop(0);
             havuz.shutdown();
             db.close();
+            if (panelDbSon != null) panelDbSon.close();
         }));
     }
 }
