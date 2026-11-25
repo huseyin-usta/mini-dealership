@@ -312,6 +312,38 @@ bekle "Katalogda bilinmeyen parametre 400" 400 'Bilinmeyen parametre: x' -H "$AU
 bekle "POST /panel/katalog 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' -X POST -H "$AUTH" "$TABAN/panel/katalog"
 
 # ============================================================================
+echo "--- GET /panel/randevu ---"
+bekle "Varsayılan: bugün + oturumdaki şube (bugün randevu yok)" 200 '"sube_id":1,"toplam":0,"randevular":[]' \
+  -H "$AUTH" "$TABAN/panel/randevu"
+bekle "Gün filtresi: şube 1'de iki randevu, saate göre sıralı" 200 \
+  "\"toplam\":2,\"randevular\":[{\"randevu_id\":3,\"baslangic\":\"${GUN}T10:00\",\"bitis\":\"${GUN}T11:00\",\"durum\":\"PLANLANDI\",\"kaynak\":\"WHATSAPP\",\"tur_kodu\":\"TEST_SURUSU\",\"tur_adi\":\"Test Sürüşü\",\"sube_id\":1,\"calisan_id\":1,\"calisan\":\"Ayşe Satıcı\",\"musteri_id\":1,\"musteri\":\"Ali Veli\",\"telefon\":\"+905550000001\",\"arac_vin\":\"PNL00000000000001\",\"plaka\":null,\"model_adi\":\"Ioniq 5\",\"notlar\":null}" \
+  -H "$AUTH" "$TABAN/panel/randevu?tarih=$GUN"
+bekle "Başka şube seçilebilir" 200 '"toplam":1,"randevular":[{"randevu_id":5' \
+  -H "$AUTH" "$TABAN/panel/randevu?tarih=$GUN&sube_id=2"
+bekle "Adı bilinmeyen müşteri null döner" 200 '"musteri":null,"telefon":"+905550000003"' \
+  -H "$AUTH" "$TABAN/panel/randevu?tarih=$GUN&sube_id=2"
+bekle "Tür filtresi" 200 '"toplam":1,"randevular":[{"randevu_id":4' \
+  -H "$AUTH" "$TABAN/panel/randevu?tarih=$GUN&tur_kodu=ARAC_INCELEME"
+bekle "Çalışan filtresi" 200 '"toplam":1,"randevular":[{"randevu_id":3' \
+  -H "$AUTH" "$TABAN/panel/randevu?tarih=$GUN&calisan_id=1"
+bekle "Durum filtresi" 200 '"toplam":0' -H "$AUTH" "$TABAN/panel/randevu?tarih=$GUN&durum=IPTAL"
+bekle "Sayfalama: limit=1 sayfa=2 ikinci randevuyu verir, toplam değişmez" 200 \
+  '"toplam":2,"randevular":[{"randevu_id":4' -H "$AUTH" "$TABAN/panel/randevu?tarih=$GUN&limit=1&sayfa=2"
+bekle "Geçersiz durum 400" 400 'durum geçersiz' -H "$AUTH" "$TABAN/panel/randevu?durum=SILINDI"
+bekle "limit=0 400" 400 'limit 1 ile 200' -H "$AUTH" "$TABAN/panel/randevu?limit=0"
+bekle "limit=201 400" 400 'limit 1 ile 200' -H "$AUTH" "$TABAN/panel/randevu?limit=201"
+bekle "sayfa=0 400" 400 'sayfa 1' -H "$AUTH" "$TABAN/panel/randevu?sayfa=0"
+bekle "Sayısal olmayan sube_id 400" 400 'sube_id tam sayı' -H "$AUTH" "$TABAN/panel/randevu?sube_id=abc"
+bekle "Var olmayan tarih (13. ay) 400 GECERSIZ_TARIH" 400 '"kod":"GECERSIZ_TARIH"' -H "$AUTH" "$TABAN/panel/randevu?tarih=2026-13-01"
+bekle "Var olmayan gün (31 Kasım) 400" 400 '"kod":"GECERSIZ_TARIH"' -H "$AUTH" "$TABAN/panel/randevu?tarih=2026-11-31"
+bekle "Tekrarlanan parametre 400" 400 'birden çok kez' -H "$AUTH" "$TABAN/panel/randevu?sube_id=1&sube_id=2"
+bekle "Bilinmeyen parametre 400 (yazım hatası filtresiz sonuç vermez)" 400 'Bilinmeyen parametre: subeid' \
+  -H "$AUTH" "$TABAN/panel/randevu?subeid=2"
+bekle "SQL enjeksiyonu denemesi yalnızca filtre değeri olarak kalır" 200 '"toplam":0' \
+  -H "$AUTH" "$TABAN/panel/randevu?tarih=$GUN&tur_kodu=x%27%20OR%20%271%27%3D%271"
+bekle "Benzer önekli yol 404 (/panel/randevular)" 404 '"kod":"YOL_YOK"' -H "$AUTH" "$TABAN/panel/randevular"
+
+# ============================================================================
 # ============================================================================
 echo "--- Başlangıç ve yapılandırma ---"
 baslat $((HTTP_PORT + 1)) /tmp/md-panel-kisa.log \

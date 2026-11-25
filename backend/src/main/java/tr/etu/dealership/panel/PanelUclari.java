@@ -13,6 +13,7 @@ public final class PanelUclari {
         sunucu.createContext("/panel/giris", giris);
         sunucu.createContext("/panel/cikis", giris);
         sunucu.createContext("/panel/katalog", new KatalogHandler(db, oturumlar));
+        sunucu.createContext("/panel/randevu", new RandevuPanelHandler(db, oturumlar));
 
         // Tanımsız /panel/* yolları: önce oturum, sonra 404 (yolların varlığı sızmasın).
         sunucu.createContext("/panel", new PanelHandler(db, oturumlar) { });
