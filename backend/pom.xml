@@ -86,6 +86,16 @@
 
   <build>
     <finalName>mini-dealership-backend</finalName>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+      </resource>
+      <!-- Panel arayüzü (repo kökündeki panel/) JAR'a gömülür, backend servis eder -->
+      <resource>
+        <directory>../panel</directory>
+        <targetPath>panel</targetPath>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

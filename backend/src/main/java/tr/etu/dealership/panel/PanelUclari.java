@@ -21,5 +21,8 @@ public final class PanelUclari {
 
         // Tanımsız /panel/* yolları: önce oturum, sonra 404 (yolların varlığı sızmasın).
         sunucu.createContext("/panel", new PanelHandler(db, oturumlar) { });
+
+        // Arayüz: geri kalan her yol statik dosya olarak denenir.
+        sunucu.createContext("/", new PanelArayuzu());
     }
 }

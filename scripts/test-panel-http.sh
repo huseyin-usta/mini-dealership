@@ -652,6 +652,35 @@ python3 scripts/xlsx-metin.py /tmp/md-bos.xlsx >/dev/null 2>&1 && [ "$kod" = 200
 bekle "Benzer ad (randevu.xls) 404" 404 '"kod":"YOL_YOK"' -H "$AUTH" "$TABAN/panel/rapor/randevu.xls?$RAPOR"
 
 # ============================================================================
+echo "--- Panel arayüzü (statik dosyalar) ---"
+bekle "Kök adres paneli açar" 200 '<title>Mini Bayi Paneli</title>' "$TABAN/"
+bekle "Uygulama modülü servis edilir" 200 'MENU' "$TABAN/js/app.js"
+bekle "Sayfa modülleri servis edilir" 200 'export async function goster' "$TABAN/js/sayfalar/randevular.js"
+bekle "Stil dosyası" 200 ':root' "$TABAN/stil.css"
+basliklar() { curl -s -D - -o /dev/null "$@"; }
+basliklar "$TABAN/js/app.js" | grep -qi '^content-type: text/javascript' && gec "JS içerik türü text/javascript" || kal "JS içerik türü yanlış"
+basliklar "$TABAN/logo.svg" | grep -qi '^content-type: image/svg+xml' && gec "SVG içerik türü" || kal "SVG içerik türü yanlış"
+basliklar "$TABAN/" | grep -qi "^content-security-policy: default-src 'self'; script-src 'self'" \
+  && gec "Sıkı CSP (satır içi betik yok, yalnızca aynı köken)" || kal "CSP başlığı yok"
+basliklar "$TABAN/js/app.js" | grep -qi '^x-content-type-options: nosniff' && gec "nosniff başlığı" || kal "nosniff yok"
+for yol in "/../pom.xml" "/js/../../META-INF/MANIFEST.MF" "/panel/../logback.xml" "/sistem-promptu.md" \
+           "/logback.xml" "/tr/edu/etu/dealership/Main.class" "/yok.html" "/Index.html" "/js/app.js.map" "/%2e%2e/pom.xml"; do
+  # /panel/... önekli yol panel API'sine düşer ve oturumsuz 401 alır; ikisi de dosya vermez
+  kod=$(curl -s --path-as-is -o /dev/null -w '%{http_code}' "$TABAN$yol")
+  case "$kod" in 404|401) gec "Sunulmayan yol ($kod): $yol" ;; *) kal "Sunulmayan yol $yol → $kod" ;; esac
+done
+kod=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$TABAN/")
+[ "$kod" = "405" ] && gec "Arayüze POST 405" || kal "Arayüze POST $kod"
+kod=$(curl -s -o /dev/null -w '%{http_code}' -I "$TABAN/")
+[ "$kod" = "200" ] && gec "HEAD / 200" || kal "HEAD / $kod"
+bekle "Arayüz eklenince panel API'si etkilenmez" 401 '"kod":"OTURUM_YOK"' "$TABAN/panel/katalog"
+if grep -rqE 'innerHTML|outerHTML|insertAdjacentHTML|document\.write' panel/; then
+  kal "Arayüzde HTML ayrıştıran API kullanılmış (XSS riski)"
+else
+  gec "Arayüz HTML ayrıştırmaz (veri yalnızca metin düğümü olarak eklenir)"
+fi
+
+# ============================================================================
 echo "--- Başlangıç ve yapılandırma ---"
 baslat $((HTTP_PORT + 1)) /tmp/md-panel-kisa.log \
   PANEL_DB_USER=panel_app PANEL_DB_PASS="$PANELPW" PANEL_OTURUM_SANIYE=2
