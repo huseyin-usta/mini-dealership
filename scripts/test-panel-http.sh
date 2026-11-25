@@ -344,6 +344,77 @@ bekle "SQL enjeksiyonu denemesi yalnızca filtre değeri olarak kalır" 200 '"to
 bekle "Benzer önekli yol 404 (/panel/randevular)" 404 '"kod":"YOL_YOK"' -H "$AUTH" "$TABAN/panel/randevular"
 
 # ============================================================================
+echo "--- POST /panel/randevu ---"
+# randevu_ekle <ad> <beklenen_durum> <beklenen_parca> <json>
+randevu_ekle() { bekle "$1" "$2" "$3" -X POST -H "$AUTH" -H "$JSON" -d "$4" "$TABAN/panel/randevu"; }
+# govde <telefon> <tur> <calisan> <saat> [ek alanlar]
+govde() { printf '{"telefon":"%s","sube_id":1,"tur_kodu":"%s","calisan_id":%s,"baslangic":"%sT%s"%s}' "$1" "$2" "$3" "$GUN" "$4" "$5"; }
+
+randevu_ekle "Kayıtlı müşteriye randevu: 201, kaynak PANEL, bitiş tür süresinden" 201 \
+  "\"bitis\":\"${GUN}T15:00\",\"durum\":\"PLANLANDI\",\"kaynak\":\"PANEL\",\"tur_kodu\":\"ARAC_INCELEME\",\"tur_adi\":\"Araç İnceleme\",\"sube_id\":1,\"calisan_id\":2,\"calisan\":\"Burak Satıcı\",\"musteri_id\":2,\"musteri\":\"Zeynep Kaya\"" \
+  "$(govde +905550000002 ARAC_INCELEME 2 14:00 ',"notlar":"Kapıdan geldi"')"
+randevu_ekle "Yeni müşteri telefonla oluşturulur" 201 '"musteri":"Selin Ak","telefon":"+905550000099"' \
+  "$(govde +905550000099 ARAC_INCELEME 2 16:00 ',"ad":"Selin","soyad":"Ak"')"
+randevu_ekle "Test sürüşü (araçlı) randevusu" 201 '"tur_kodu":"TEST_SURUSU","tur_adi":"Test Sürüşü","sube_id":1,"calisan_id":7' \
+  "$(govde +905550000099 TEST_SURUSU 7 09:00 ',"arac_vin":"PNL00000000000002"')"
+randevu_ekle "Yeni müşteride ad/soyad eksik 400" 400 'ad ve soyad zorunlu' \
+  "$(govde +905550000098 ARAC_INCELEME 2 13:00)"
+randevu_ekle "Telefon E.164 değil 400" 400 'E.164' "$(govde 05550000002 ARAC_INCELEME 2 13:00)"
+randevu_ekle "Geçmiş saat 400 GECMIS_TARIH" 400 '"kod":"GECMIS_TARIH"' \
+  '{"telefon":"+905550000002","sube_id":1,"tur_kodu":"ARAC_INCELEME","calisan_id":2,"baslangic":"2020-01-07T10:00"}'
+randevu_ekle "Bozuk zaman biçimi 400" 400 'YYYY-MM-DDTHH:MM' \
+  '{"telefon":"+905550000002","sube_id":1,"tur_kodu":"ARAC_INCELEME","calisan_id":2,"baslangic":"yarin"}'
+randevu_ekle "Bilinmeyen tür 404" 404 'Randevu türü bulunamadı' "$(govde +905550000002 MASAJ 2 13:00)"
+randevu_ekle "Bilinmeyen şube 404" 404 'Şube bulunamadı' \
+  "$(govde +905550000002 ARAC_INCELEME 2 13:00 | sed 's/"sube_id":1/"sube_id":99/')"
+randevu_ekle "Bilinmeyen çalışan 404" 404 'Çalışan bulunamadı' "$(govde +905550000002 ARAC_INCELEME 99 13:00)"
+randevu_ekle "Bilinmeyen araç 404" 404 'Araç bulunamadı' \
+  "$(govde +905550000002 TEST_SURUSU 7 13:00 ',"arac_vin":"YOKYOKYOKYOKYOK00"')"
+randevu_ekle "Araçlı türde araç eksik 400" 400 'arac_vin zorunlu' "$(govde +905550000002 TEST_SURUSU 7 13:00)"
+randevu_ekle "Araçsız türde araç verilirse 400" 400 'araç seçilmez' \
+  "$(govde +905550000002 ARAC_INCELEME 2 13:00 ',"arac_vin":"PNL00000000000002"')"
+randevu_ekle "calisan_id metin 400" 400 'calisan_id tam sayı' "$(govde +905550000002 ARAC_INCELEME '"2"' 13:00)"
+randevu_ekle "Bilinmeyen alan 400 (kaynak elle verilemez)" 400 'Bilinmeyen alan: kaynak' \
+  "$(govde +905550000002 ARAC_INCELEME 2 13:00 ',"kaynak":"WHATSAPP"')"
+randevu_ekle "Çalışan dolu 409 SLOT_DOLU/CALISAN_DOLU" 409 '"sebep":"CALISAN_DOLU"' \
+  "$(govde +905550000077 TEST_SURUSU 1 10:30 ',"ad":"Can","soyad":"Er","arac_vin":"PNL00000000000002"')"
+randevu_ekle "Araç dolu 409 ARAC_DOLU" 409 '"sebep":"ARAC_DOLU"' \
+  "$(govde +905550000077 TEST_SURUSU 7 10:30 ',"ad":"Can","soyad":"Er","arac_vin":"PNL00000000000001"')"
+randevu_ekle "Müşteri aynı saatte başka randevuda 409 MUSTERI_DOLU" 409 '"sebep":"MUSTERI_DOLU"' \
+  "$(govde +905550000001 ARAC_INCELEME 2 10:00)"
+randevu_ekle "Yetkinliği olmayan çalışana test sürüşü 409" 409 '"sebep":"YETKINLIK_YOK"' \
+  "$(govde +905550000002 TEST_SURUSU 2 15:00 ',"arac_vin":"PNL00000000000002"')"
+randevu_ekle "Servis çalışanına satış randevusu 409 DEPARTMAN" 409 '"sebep":"DEPARTMAN"' \
+  "$(govde +905550000002 ARAC_INCELEME 3 13:00)"
+randevu_ekle "Başka şubenin çalışanı 409 BASKA_SUBE" 409 '"sebep":"BASKA_SUBE"' \
+  "$(govde +905550000002 ARAC_INCELEME 5 13:00)"
+randevu_ekle "Pasif çalışana randevu 409 PASIF" 409 '"sebep":"PASIF"' \
+  "$(govde +905550000002 ARAC_INCELEME 4 13:00)"
+randevu_ekle "Tür saat penceresi dışı (17:30) 400 GECERSIZ_SAAT" 400 '"kod":"GECERSIZ_SAAT"' \
+  "$(govde +905550000002 ARAC_INCELEME 2 17:30)"
+PAZAR=$(python3 -c 'import datetime as d; t=d.date.today()+d.timedelta(days=1); print(t+d.timedelta(days=(6-t.weekday())%7))')
+randevu_ekle "Pazar günü (mesai yok) 400 GECERSIZ_SAAT" 400 '"kod":"GECERSIZ_SAAT"' \
+  "{\"telefon\":\"+905550000002\",\"sube_id\":1,\"tur_kodu\":\"ARAC_INCELEME\",\"calisan_id\":2,\"baslangic\":\"${PAZAR}T10:00\"}"
+randevu_ekle "Yoldaki araçla test sürüşü 409 ARAC_UYGUN_DEGIL" 409 '"kod":"ARAC_UYGUN_DEGIL"' \
+  "$(govde +905550000002 TEST_SURUSU 7 15:00 ',"arac_vin":"PNL00000000000003"')"
+yok "Reddedilen istekte yeni müşteri oluşmaz (rollback)" '+905550000077' \
+  -H "$AUTH" "$TABAN/panel/randevu?tarih=$GUN"
+
+# Eşzamanlılık: aynı çalışan + aynı saat için iki paralel istek → biri 201, biri 409
+curl -s -o /dev/null -w '%{http_code}' -X POST -H "$AUTH" -H "$JSON" \
+  -d "$(govde +905550000002 ARAC_INCELEME 2 09:00)" "$TABAN/panel/randevu" > /tmp/md-esz1 &
+P1=$!
+curl -s -o /dev/null -w '%{http_code}' -X POST -H "$AUTH" -H "$JSON" \
+  -d "$(govde +905550000099 ARAC_INCELEME 2 09:00)" "$TABAN/panel/randevu" > /tmp/md-esz2 &
+P2=$!
+wait "$P1"; wait "$P2"
+SONUC="$(cat /tmp/md-esz1) $(cat /tmp/md-esz2)"
+case "$SONUC" in
+  "201 409"|"409 201") gec "Eşzamanlı iki istekten yalnızca biri yer alır ($SONUC)" ;;
+  *) kal "Eşzamanlı istek sonucu beklenmedik: $SONUC" ;;
+esac
+
+# ============================================================================
 # ============================================================================
 echo "--- Başlangıç ve yapılandırma ---"
 baslat $((HTTP_PORT + 1)) /tmp/md-panel-kisa.log \
