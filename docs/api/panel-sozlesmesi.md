@@ -22,12 +22,20 @@ panelin kimliği paylaşılan bir token değil, **çalışanın kendi girişidir
 2. Başarılıysa rastgele, opak bir oturum anahtarı döner (en az 128 bit). Backend
    oturumu bellekte tutar: `calisan_id`, `sube_id`, `departman`, son kullanma.
 3. Sonraki her istekte: `Authorization: Bearer <oturum>`.
-4. Oturum **8 saat** sonra veya `POST /panel/cikis` ile düşer. Backend yeniden
-   başlarsa tüm oturumlar düşer (kalıcı oturum tablosu yok).
+4. Oturum **8 saat** sonra (`PANEL_OTURUM_SANIYE`, varsayılan 28800) veya
+   `POST /panel/cikis` ile düşer. Backend yeniden başlarsa tüm oturumlar düşer
+   (kalıcı oturum tablosu yok).
 
 Hatalı/eksik/süresi dolmuş oturum → `401 OTURUM_YOK`; hiçbir sorgu çalışmaz.
+Oturum, yol ve yöntem kontrolünden **önce** yapılır: oturumsuz istek tanımsız
+bir yola da 401 alır, yolların varlığı sızmaz.
 Yanlış kullanıcı adı ile yanlış şifre **aynı** hatayı döner
 (`401 GIRIS_HATALI`) — hangi kullanıcı adlarının var olduğu sızmasın.
+Bir kullanıcı adında art arda 5 hatalı girişten sonra o ad 1 dakika kilitlenir
+(`429 COK_DENEME`; doğru şifre de reddedilir, diğer kullanıcılar etkilenmez).
+
+Bütün yanıtlar `Cache-Control: no-store` taşır (müşteri bilgisi tarayıcı
+önbelleğinde kalmasın).
 
 ### Veritabanı rolü
 
@@ -52,7 +60,10 @@ Ortak hata kodları:
 |---|---|---|
 | `OTURUM_YOK` | 401 | `Authorization` eksik, oturum bilinmiyor veya süresi dolmuş |
 | `GIRIS_HATALI` | 401 | Kullanıcı adı veya şifre yanlış (ya da çalışan pasif) |
-| `GECERSIZ_PARAMETRE` | 400 | Eksik/bozuk alan, gövde JSON değil, tekrarlanan query parametresi |
+| `COK_DENEME` | 429 | Kullanıcı adı geçici olarak kilitli (art arda hatalı giriş) |
+| `GECERSIZ_PARAMETRE` | 400 | Eksik/bozuk alan, gövde JSON değil, tekrarlanan veya **bilinmeyen** query parametresi/gövde alanı (yazım hatası filtresiz sonuç vermesin) |
+| `GECERSIZ_TARIH` | 400 | Tarih `YYYY-MM-DD` değil ya da takvimde yok (ör. 31 Kasım) |
+| `KURAL_IHLALI` | 409 | DB trigger'ının reddettiği, aşağıda ayrıca kodlanmamış bir iş kuralı; `mesaj` trigger'ın Türkçe açıklamasıdır |
 | `BULUNAMADI` | 404 | İstenen kayıt (randevu, araç, müşteri, servis) yok |
 | `YOL_YOK` | 404 | Sözleşmede olmayan yol |
 | `YONTEM_DESTEKLENMIYOR` | 405 | Yanlış HTTP yöntemi (`Allow` başlığı döner) |
@@ -108,9 +119,11 @@ Para: tam sayı TL.
 
 ## 2. `GET /panel/katalog`
 
-Açılır listeler için tek seferde: şubeler, randevu türleri (süre, departman),
-aktif çalışanlar (şube, departman, yetkinlikler), modeller. Panel girişte bir kez
-çeker.
+Açılır listeler için tek seferde: `subeler` (`sube_id, sehir, ad`), `turler`
+(`tur_kodu, ad, sure_dakika, departman, arac_gerekli`), `calisanlar` (yalnızca
+aktif; `calisan_id, ad, soyad, sube_id, departman, yetkinlikler` — süresi
+dolmamış yetkinlik kodları), `modeller` (`model_id, ad`). Panel girişte bir kez
+çeker. Şifre hash'i hiçbir zaman dönmez.
 
 ## 3. `GET /panel/randevu` — Bugünkü randevular
 
@@ -119,10 +132,12 @@ aktif çalışanlar (şube, departman, yetkinlikler), modeller. Panel girişte b
 | `tarih` | ❌ | Varsayılan bugün |
 | `sube_id` | ❌ | Varsayılan oturumdaki çalışanın şubesi |
 | `tur_kodu`, `durum`, `calisan_id` | ❌ | Filtre |
+| `limit`, `sayfa` | ❌ | Sayfalama |
 
-Satır: `randevu_id, baslangic, bitis, durum, kaynak, tur_kodu, tur_adi,
-calisan (ad soyad), musteri_id, musteri (ad soyad), telefon, arac_vin, plaka,
-model_adi, notlar`. Sıralama: `baslangic`.
+Yanıt: `{ tarih, sube_id, toplam, randevular: [...] }`.
+Satır: `randevu_id, baslangic, bitis, durum, kaynak, tur_kodu, tur_adi, sube_id,
+calisan_id, calisan (ad soyad), musteri_id, musteri (ad soyad; bilinmiyorsa
+null), telefon, arac_vin, plaka, model_adi, notlar`. Sıralama: `baslangic`.
 
 İndeks: `idx_randevu_sube_baslangic`.
 
@@ -162,8 +177,11 @@ hangi EXCLUDE kısıtına takıldığı), `CALISAN_UYGUN_DEGIL 409` (elle seçil
 ```
 
 İzinli geçişler: `PLANLANDI → TAMAMLANDI | GELMEDI | IPTAL`. Diğerleri
-`409 GECERSIZ_GECIS` (ör. iptal edilmiş randevuyu yeniden açmak — trigger zaten
-engelliyor).
+`409 GECERSIZ_GECIS` (`detay.mevcut_durum` ile; ör. iptal edilmiş randevuyu
+yeniden açmak). Başlamamış randevu `TAMAMLANDI`/`GELMEDI` yapılamaz →
+`409 ZAMANI_GELMEDI`; iptal her zaman serbesttir. Satır `FOR UPDATE` ile
+kilitlenir. Yanıt: güncellenmiş randevu satırı (3'teki biçim). İptal edilen
+saat, EXCLUDE kısıtı iptalleri saymadığı için yeniden verilebilir.
 
 > **Satış akışı** (araç `SATILDI` + stok hareketi + randevu `TAMAMLANDI`, tek
 > transaction) ayrı bir uçtur ve transaction sahibi Hüseyin'dir; burada
@@ -177,10 +195,18 @@ engelliyor).
 |---|---|
 | `sube_id` | Varsayılan oturumdaki şube |
 | `durum` | `STOKTA`, `YOLDA`, `SATILDI` |
-| `ara` | VIN veya plaka (tam ya da önek eşleşme) |
+| `ara` | VIN veya plaka öneki (büyük/küçük harf ve boşluk önemsiz, en fazla 17 karakter). `sube_id` verilmezse **tüm şubelerde** aranır |
 | `model_id` | Filtre |
+| `limit`, `sayfa` | Sayfalama |
 
-Satır: `vin, plaka, model_adi, paket_adi, renk, durum, tahmini_varis_tarihi, sube_id`.
+`%` ve `_` joker değildir (önek `left()` ile karşılaştırılır, LIKE yok).
+
+Satır: `vin, plaka, model_id, model_adi, paket_adi, model_yili, renk, durum,
+tahmini_varis_tarihi, sube_id, sube_adi, liste_fiyati`.
+
+`{vin}` 17 harf/rakam olmalı, aksi halde `404 YOL_YOK`; küçük harf kabul edilir.
+Detayda ayrıca `sahip` (satılmışsa `musteri_id, ad_soyad, telefon`, değilse
+`null`); satılmamış araçta `garanti` `null`.
 
 `GET /panel/arac/{vin}` — detay:
 
@@ -203,10 +229,14 @@ Satır: `vin, plaka, model_adi, paket_adi, renk, durum, tahmini_varis_tarihi, su
 | `sube_id` | Varsayılan oturumdaki şube |
 | `acik` | `true`: `kapandi_mi = false` |
 | `gecikti` | `true`: `gecikti_mi = true` |
-| `ara` | VIN veya plaka |
+| `ara` | VIN veya plaka öneki (araçlardaki gibi; `sube_id` verilmezse tüm şubeler) |
+| `limit`, `sayfa` | Sayfalama |
 
-Satır: `servis_kaydi_id, arac_vin, plaka, model_adi, musteri, sebep, son_durum,
-son_durum_zamani, tahmini_teslim_tarihi, kalan_gun, gecikti_mi, toplam_masraf`.
+Sıralama: açık kayıtlar önce, sonra tahmini teslim tarihi (boşlar sonda).
+
+Satır: `servis_kaydi_id, sube_id, arac_vin, plaka, model_adi, musteri_id,
+musteri, sebep, giris_zamani, giris_kilometresi, son_durum, son_durum_zamani,
+tahmini_teslim_tarihi, kalan_gun, kapandi_mi, gecikti_mi, toplam_masraf`.
 
 `GET /panel/servis/{id}` — detay: kayıt + `servis_durum_gecmisi` (zaman
 sırasıyla) + `servis_islem` satırları + masraf kırılımı (`musteri_payi`,
@@ -222,7 +252,11 @@ sırasıyla) + `servis_islem` satırları + masraf kırılımı (`musteri_payi`,
   "tahmini_teslim_tarihi": "2026-11-28" }
 ```
 
-`tahmini_teslim_tarihi` verilirse servis kaydında güncellenir (aynı transaction).
+`tahmini_teslim_tarihi` verilirse servis kaydında güncellenir (aynı transaction);
+geçmiş tarih `400 GECMIS_TARIH`. Durum `TAMAMLANDI` eklenirse kayıt kapanır.
+
+Her iki güncelleme ucu `201 Created` ile servis detayını (7'deki biçim) döner;
+servis kaydı `FOR UPDATE` ile kilitlenir.
 
 `POST /panel/servis/{id}/islem`
 
@@ -247,9 +281,12 @@ Hatalar (`210_trg_servis_garanti` trigger'ından çevrilir):
 
 ## 9. Müşteriler
 
-`GET /panel/musteri?ara=` — telefon (önek) veya ad/soyad (içerir) ile arama.
-Satır: `musteri_id, ad, soyad, telefon, kayit_zamani, son_randevu`
-(`v_musteri_son_randevu`).
+`GET /panel/musteri?ara=` — `ara` `+` veya rakamla başlıyorsa telefon öneki
+(boşluklar atılır), değilse ad/soyad içinde geçen metin (büyük/küçük harf
+önemsiz, joker yok); en fazla 64 karakter. `limit`, `sayfa` ile sayfalanır,
+yeni kayıtlar önce. Satır: `musteri_id, ad, soyad, telefon, kayit_zamani,
+son_randevu_zamani, son_randevu_turu, son_randevu_durumu`
+(`v_musteri_son_randevu`). Adı henüz öğrenilmemiş müşteride `ad`/`soyad` `null`.
 
 `GET /panel/musteri/{id}` — iletişim bilgileri + randevu geçmişi (yeniden
 eskiye, iptaller dahil, durumuyla) + sahip olduğu araçlar.
@@ -261,8 +298,10 @@ eskiye, iptaller dahil, durumuyla) + sahip olduğu araçlar.
 | `once` | Bu `mesaj_id`'den eski mesajlar (imleç); yoksa en yeniler |
 | `limit` | Varsayılan 50, en fazla 200 |
 
-Satır: `mesaj_id, yon (GELEN/GIDEN), zaman, icerik`. Yeniden eskiye.
-Yanıtta `sonraki_once` (daha eski mesaj yoksa `null`).
+Satır: `mesaj_id, yon (GELEN/GIDEN), zaman, icerik`. Yeniden eskiye;
+sıralama ve imleç `(zaman, mesaj_id)` çiftidir (`mesaj_id` zamanla aynı sırada
+olmak zorunda değil). Yanıtta `sonraki_once` (daha eski mesaj yoksa `null`).
+`once` bu müşterinin bir mesajı değilse `400 GECERSIZ_PARAMETRE`.
 
 İndeks: `idx_mesaj_musteri_zaman` (`musteri_id, zaman DESC`).
 
@@ -270,12 +309,23 @@ Salt-okunur: `personel` rolünün `mesaj` tablosunda yazma yetkisi yok.
 
 ## 11. `GET /panel/rapor/ozet` — İstatistikler
 
-`baslangic`, `bitis` (tarih, zorunlu), `sube_id` (ops.). Rol: `rapor`.
+`baslangic`, `bitis` (tarih, zorunlu, iki uç dahil), `sube_id` (ops.). Rol:
+`rapor`. Aralık en fazla 366 gün; daha uzunsa `400 ARALIK_COK_GENIS`.
 
-Dönen bloklar: şube doluluk, randevu türü dağılımı, kaynak dağılımı
-(WhatsApp/panel), iptal ve gelmeme oranı, test sürüşünden satışa dönüşüm.
-Kaynak: `v_rapor_randevu` ve `docs/analiz/sorgular.sql`'deki sorguların
-tarih parametreli halleri.
+Dönen bloklar (hepsi yalnızca `v_rapor_randevu`'dan):
+
+| Blok | İçerik |
+|---|---|
+| `ozet` | `toplam, planlandi, tamamlandi, iptal, gelmedi, iptal_yuzde, gelmeme_yuzde` (gelmeme oranı TAMAMLANDI+GELMEDI üzerinden; boş aralıkta oranlar `null`) |
+| `sube_doluluk` | `sube_id, sehir, sube_adi, randevu, tamamlanan, sira` — iptaller sayılmaz, `RANK()` |
+| `tur_dagilimi` | `tur_kodu, tur_adi, departman, adet` |
+| `kaynak_dagilimi` | `kaynak, adet, yuzde` (window `sum() OVER ()`) |
+| `test_surusu_donusum` | `model_adi, test_surusu, satisa_donen` |
+
+Dönüşüm: tamamlanmış test sürüşünden sonraki 60 gün içinde aynı müşteriye
+aynı modelden (iptal edilmemiş) teslimat randevusu verildiyse satışa dönmüş
+sayılır. `rapor` rolü stok tablosunu göremediği için satışın izi teslimat
+randevusudur (`docs/analiz/sorgular.sql` Sorgu 1'in rapor rolüyle uyumlu hali).
 
 ## 12. `GET /panel/rapor/randevu.xlsx` — Excel dışa aktarım
 
@@ -287,8 +337,12 @@ zarf yok. Hata olursa normal JSON zarfı döner.
 - Kaynak `v_rapor_randevu`, rol `rapor`: müşteri adı ve telefonu **maskeli**
   çıkar. Excel dosyası paylaşılabilir bir belge olduğu için PII içermemesi
   DB rolüyle garanti edilir, panel koduna güvenilmez.
-- Sayfalar: "Randevular" (satır başına bir randevu), "Özet" (11'deki bloklar).
-- En fazla 100.000 satır; aşılırsa `400 ARALIK_COK_GENIS`.
+- Sayfalar: "Randevular" (satır başına bir randevu; başlık satırı sabit,
+  zamanlar Excel tarih hücresi) ve "Özet" (11'deki bloklar).
+- En fazla 100.000 satır ve 366 gün; aşılırsa `400 ARALIK_COK_GENIS`.
+  Satırlar DB'den akışla okunur (fetch size 1000).
+- Dosya adı: `randevular_<baslangic>_<bitis>[_sube<id>].xlsx`.
+- Üretim: fastexcel kütüphanesi (yalnızca yazar; okuma/içe aktarma kodu yok).
 
 ---
 
