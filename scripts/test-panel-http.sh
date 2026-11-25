@@ -433,6 +433,46 @@ randevu_ekle "İptal edilen saat yeniden verilebilir (EXCLUDE iptali saymaz)" 20
   "$(govde +905550000099 ARAC_INCELEME 2 11:00)"
 
 # ============================================================================
+echo "--- GET /panel/arac ---"
+bekle "Varsayılan: oturumdaki şubenin araçları" 200 '"sube_id":1,"toplam":4' -H "$AUTH" "$TABAN/panel/arac"
+bekle "Araç satırı model, paket, fiyat ve şube adını taşır" 200 \
+  '{"vin":"PNL00000000000001","plaka":null,"model_id":1,"model_adi":"Ioniq 5","paket_adi":"Advance","model_yili":2024,"renk":"Beyaz","durum":"STOKTA","tahmini_varis_tarihi":null,"sube_id":1,"sube_adi":"Çankaya","liste_fiyati":2000000}' \
+  -H "$AUTH" "$TABAN/panel/arac"
+bekle "Durum filtresi (YOLDA) varış tarihiyle" 200 '"toplam":1,"araclar":[{"vin":"PNL00000000000003"' \
+  -H "$AUTH" "$TABAN/panel/arac?durum=YOLDA"
+bekle "Model filtresi" 200 '"toplam":3' -H "$AUTH" "$TABAN/panel/arac?model_id=1"
+bekle "Başka şube" 200 '"sube_id":2,"toplam":2' -H "$AUTH" "$TABAN/panel/arac?sube_id=2"
+bekle "Plaka ile arama tüm şubelerde (boşluk/küçük harf önemsiz)" 200 '"toplam":1,"araclar":[{"vin":"PNL00000000000005","plaka":"34XYZ789"' \
+  -H "$AUTH" "$TABAN/panel/arac?ara=34%20xyz"
+bekle "VIN öneki ile arama" 200 '"toplam":6' -H "$AUTH" "$TABAN/panel/arac?ara=pnl"
+bekle "Arama + şube birlikte" 200 '"toplam":0' -H "$AUTH" "$TABAN/panel/arac?ara=34XYZ&sube_id=1"
+bekle "% joker karakter değildir" 200 '"toplam":0' -H "$AUTH" "$TABAN/panel/arac?ara=%25"
+bekle "_ joker karakter değildir" 200 '"toplam":0' -H "$AUTH" "$TABAN/panel/arac?ara=PNL_"
+bekle "17 karakterden uzun arama 400" 400 'en fazla 17' -H "$AUTH" "$TABAN/panel/arac?ara=PNL000000000000011"
+bekle "Geçersiz durum 400" 400 'durum geçersiz' -H "$AUTH" "$TABAN/panel/arac?durum=HURDA"
+
+echo "--- GET /panel/arac/{vin} ---"
+bekle "Satılmış araç: sahip bilgisi" 200 '"sahip":{"musteri_id":1,"ad_soyad":"Ali Veli","telefon":"+905550000001"}' \
+  -H "$AUTH" "$TABAN/panel/arac/PNL00000000000004"
+bekle "Versiyon özellikleri" 200 '"ozellikler":[{"ozellik_adi":"Batarya","deger":"77 kWh"},{"ozellik_adi":"Menzil","deger":"480 km"}]' \
+  -H "$AUTH" "$TABAN/panel/arac/PNL00000000000004"
+GBAS=$(python3 -c 'import datetime as d; print(d.date.today()-d.timedelta(days=200))')
+GBIT=$(python3 -c 'import datetime as d; t=d.date.today()-d.timedelta(days=200); print(t.replace(year=t.year+3))')
+bekle "Garanti: satıştan başlar, model süresi kadar (3 yıl)" 200 "\"garanti_baslangic\":\"$GBAS\",\"garanti_bitis\":\"$GBIT\",\"garanti_km\":100000,\"son_bilinen_km\":12000" \
+  -H "$AUTH" "$TABAN/panel/arac/PNL00000000000004"
+bekle "Stok hareketleri zaman sırasıyla (geliş, satış)" 200 '"stok_hareketleri":[{"hareket_turu":"GELIS"' \
+  -H "$AUTH" "$TABAN/panel/arac/PNL00000000000004"
+bekle "Servis geçmişi araç detayında" 200 '"servis_kayitlari":[{"servis_kaydi_id":1,"sebep":"ARIZA"' \
+  -H "$AUTH" "$TABAN/panel/arac/PNL00000000000004"
+bekle "Stoktaki araçta sahip ve garanti yok" 200 '"sahip":null' -H "$AUTH" "$TABAN/panel/arac/PNL00000000000001"
+bekle "Stoktaki araçta garanti null" 200 '"garanti":null' -H "$AUTH" "$TABAN/panel/arac/PNL00000000000001"
+bekle "VIN küçük harfle de bulunur" 200 '"vin":"PNL00000000000001"' -H "$AUTH" "$TABAN/panel/arac/pnl00000000000001"
+bekle "Olmayan VIN 404" 404 'Araç bulunamadı' -H "$AUTH" "$TABAN/panel/arac/XXX00000000000001"
+bekle "17 karakter olmayan VIN 404 YOL_YOK" 404 '"kod":"YOL_YOK"' -H "$AUTH" "$TABAN/panel/arac/PNL1"
+bekle "VIN'de özel karakter 404 YOL_YOK" 404 '"kod":"YOL_YOK"' -H "$AUTH" "$TABAN/panel/arac/PNL0000000000000%27"
+bekle "POST /panel/arac 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' -X POST -H "$AUTH" "$TABAN/panel/arac"
+
+# ============================================================================
 echo "--- Başlangıç ve yapılandırma ---"
 baslat $((HTTP_PORT + 1)) /tmp/md-panel-kisa.log \
   PANEL_DB_USER=panel_app PANEL_DB_PASS="$PANELPW" PANEL_OTURUM_SANIYE=2
