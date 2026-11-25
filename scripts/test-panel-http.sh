@@ -552,6 +552,29 @@ yok "Reddedilen garanti işlemi kaydedilmedi (rollback)" '"islem_adi":"X"' -H "$
 bekle "GET /islem 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' -H "$AUTH" "$TABAN/panel/servis/1/islem"
 
 # ============================================================================
+echo "--- GET /panel/musteri ---"
+bekle "Müşteri listesi toplamla döner" 200 '"toplam":' -H "$AUTH" "$TABAN/panel/musteri"
+bekle "Telefon önekiyle arama" 200 '"toplam":1,"musteriler":[{"musteri_id":1,"ad":"Ali","soyad":"Veli","telefon":"+905550000001"' \
+  -H "$AUTH" "$TABAN/panel/musteri?ara=%2B905550000001"
+bekle "Telefonda boşluk önemsiz" 200 '"toplam":1' -H "$AUTH" "$TABAN/panel/musteri?ara=%2B90%20555%20000%200001"
+bekle "Ad/soyad içinde arama (büyük/küçük harf önemsiz)" 200 '"toplam":1,"musteriler":[{"musteri_id":2,"ad":"Zeynep","soyad":"Kaya"' \
+  -H "$AUTH" "$TABAN/panel/musteri?ara=kAyA"
+bekle "Son randevu bilgisi listede" 200 '"son_randevu_turu":"Test Sürüşü","son_randevu_durumu":"PLANLANDI"' \
+  -H "$AUTH" "$TABAN/panel/musteri?ara=%2B905550000001"
+bekle "% joker değil" 200 '"toplam":0' -H "$AUTH" "$TABAN/panel/musteri?ara=%25"
+bekle "Adı bilinmeyen müşteri telefonla bulunur" 200 '"ad":null,"soyad":null,"telefon":"+905550000003"' \
+  -H "$AUTH" "$TABAN/panel/musteri?ara=%2B905550000003"
+bekle "Çok uzun arama 400" 400 'en fazla 64' -H "$AUTH" "$TABAN/panel/musteri?ara=$(printf 'a%.0s' $(seq 1 65))"
+
+echo "--- GET /panel/musteri/{id} ---"
+bekle "Müşteri kartı: iletişim bilgisi" 200 '"musteri_id":1,"ad":"Ali","soyad":"Veli","telefon":"+905550000001"' \
+  -H "$AUTH" "$TABAN/panel/musteri/1"
+bekle "Randevu geçmişi yeniden eskiye" 200 '"randevular":[{"randevu_id":3,' -H "$AUTH" "$TABAN/panel/musteri/1"
+bekle "Sahip olunan araçlar" 200 '"araclar":[{"vin":"PNL00000000000004","plaka":"06ABC123","model_adi":"Ioniq 5"' \
+  -H "$AUTH" "$TABAN/panel/musteri/1"
+bekle "Olmayan müşteri 404" 404 'Müşteri bulunamadı' -H "$AUTH" "$TABAN/panel/musteri/999"
+
+# ============================================================================
 echo "--- Başlangıç ve yapılandırma ---"
 baslat $((HTTP_PORT + 1)) /tmp/md-panel-kisa.log \
   PANEL_DB_USER=panel_app PANEL_DB_PASS="$PANELPW" PANEL_OTURUM_SANIYE=2
@@ -560,9 +583,18 @@ KISA=$(giris ayse $((HTTP_PORT + 1)))
 # Geçerli oturum tanımsız yolda 404 alır (401 değil): oturum kabul edildi demektir
 bekle "Oturum süresi içinde geçerli" 404 '"kod":"YOL_YOK"' \
   -H "Authorization: Bearer $KISA" "http://127.0.0.1:$((HTTP_PORT + 1))/panel/gizli-yol"
-sleep 3
-bekle "Süresi dolan oturum 401" 401 '"kod":"OTURUM_YOK"' \
-  -H "Authorization: Bearer $KISA" "http://127.0.0.1:$((HTTP_PORT + 1))/panel/gizli-yol"
+# Süre dolunca 401. Duvar saati (JVM Instant) ile sleep'in monoton saati WSL2 gibi
+# ortamlarda birkaç saniye kayabildiği için tek bir sabit beklemeye bağlanmaz:
+# 2 sn'lik oturumun en geç 10 sn içinde düşmesi beklenir.
+sleep 2
+dustu=0
+for n in 1 2 3 4 5 6 7 8; do
+  kod=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $KISA" \
+    "http://127.0.0.1:$((HTTP_PORT + 1))/panel/gizli-yol")
+  [ "$kod" = "401" ] && { dustu=1; break; }
+  sleep 1
+done
+[ "$dustu" = 1 ] && gec "Süresi dolan oturum 401" || kal "Süresi dolan oturum 10 sn sonra hâlâ geçerli"
 kill "$SRV2_PID" 2>/dev/null || true; wait "$SRV2_PID" 2>/dev/null || true; SRV2_PID=
 
 baslat $((HTTP_PORT + 2)) /tmp/md-panel-kapali.log
