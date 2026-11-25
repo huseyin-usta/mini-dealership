@@ -616,6 +616,41 @@ bekle "Tam 366 gün (artık yıl) kabul" 200 '"ok":true' -H "$AUTH" "$TABAN/pane
 yok "Özet müşteri PII'si taşımaz" '+90555' -H "$AUTH" "$TABAN/panel/rapor/ozet?$RAPOR"
 bekle "Oturumsuz rapor 401" 401 '"kod":"OTURUM_YOK"' "$TABAN/panel/rapor/ozet?$RAPOR"
 
+echo "--- GET /panel/rapor/randevu.xlsx ---"
+XLSX=/tmp/md-panel-rapor.xlsx
+BASLIK=/tmp/md-panel-rapor.baslik
+rm -f "$XLSX" "$BASLIK"
+kod=$(curl -s -D "$BASLIK" -o "$XLSX" -w '%{http_code}' -H "$AUTH" "$TABAN/panel/rapor/randevu.xlsx?$RAPOR")
+[ "$kod" = "200" ] && gec "Excel 200" || kal "Excel durum kodu $kod"
+grep -qi '^content-type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' "$BASLIK" \
+  && gec "Excel içerik türü xlsx" || kal "Excel içerik türü yanlış" "$(grep -i content-type "$BASLIK")"
+grep -qi "^content-disposition: attachment; filename=\"randevular_${GECMIS}_${GUN}.xlsx\"" "$BASLIK" \
+  && gec "Dosya adı tarih aralığını taşır" || kal "Dosya adı yanlış" "$(grep -i content-disposition "$BASLIK")"
+METIN=$(python3 scripts/xlsx-metin.py "$XLSX" 2>/dev/null || echo GECERSIZ_XLSX)
+case "$METIN" in *GECERSIZ_XLSX*) kal "Dosya geçerli bir xlsx değil" ;; *) gec "Dosya geçerli bir xlsx (zip) açılıyor" ;; esac
+printf '%s' "$METIN" | grep -qF 'SAYFALAR:Randevular|Özet' && gec "İki sayfa: Randevular ve Özet" || kal "Sayfa adları yanlış"
+printf '%s' "$METIN" | grep -qF 'Müşteri (maskeli)' && gec "Randevular sayfasında başlık satırı" || kal "Başlık satırı yok"
+printf '%s' "$METIN" | grep -qF 'A*** V***' && gec "Müşteri adı maskeli (A*** V***)" || kal "Maskeli müşteri adı yok"
+printf '%s' "$METIN" | grep -qF '0555 *** ** 01' && gec "Telefon maskeli (0555 *** ** 01)" || kal "Maskeli telefon yok"
+if printf '%s' "$METIN" | grep -qE '\+90555|Zeynep|Kaya|Ali Veli'; then
+  kal "Excel'e ham müşteri bilgisi sızdı"
+else
+  gec "Excel'de ham ad/telefon yok (PII sızmaz)"
+fi
+printf '%s' "$METIN" | grep -qF 'Şube doluluk sıralaması' && gec "Özet sayfasında doluluk tablosu" || kal "Özet tablosu yok"
+printf '%s' "$METIN" | grep -qF 'Çalışan' && printf '%s' "$METIN" | grep -qF 'Ayşe Satıcı' \
+  && gec "Çalışan adı raporda (PII değil)" || kal "Çalışan adı yok"
+grep -qi '^cache-control: no-store' "$BASLIK" && gec "Excel önbelleğe alınmaz" || kal "Excel no-store yok"
+bekle "Excel'de tarih zorunlu (JSON hata)" 400 'baslangic ve bitis zorunlu' -H "$AUTH" "$TABAN/panel/rapor/randevu.xlsx"
+bekle "Excel'de 366 günden uzun aralık 400" 400 '"kod":"ARALIK_COK_GENIS"' \
+  -H "$AUTH" "$TABAN/panel/rapor/randevu.xlsx?baslangic=2025-01-01&bitis=2026-01-02"
+bekle "Oturumsuz Excel 401" 401 '"kod":"OTURUM_YOK"' "$TABAN/panel/rapor/randevu.xlsx?$RAPOR"
+bekle "Excel içe aktarma yok (POST 405)" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' -X POST -H "$AUTH" "$TABAN/panel/rapor/randevu.xlsx"
+kod=$(curl -s -o /tmp/md-bos.xlsx -w '%{http_code}' -H "$AUTH" "$TABAN/panel/rapor/randevu.xlsx?baslangic=2020-01-01&bitis=2020-01-02")
+python3 scripts/xlsx-metin.py /tmp/md-bos.xlsx >/dev/null 2>&1 && [ "$kod" = 200 ] \
+  && gec "Boş aralıkta da geçerli (yalnızca başlıklı) xlsx" || kal "Boş aralık Excel'i bozuk ($kod)"
+bekle "Benzer ad (randevu.xls) 404" 404 '"kod":"YOL_YOK"' -H "$AUTH" "$TABAN/panel/rapor/randevu.xls?$RAPOR"
+
 # ============================================================================
 echo "--- Başlangıç ve yapılandırma ---"
 baslat $((HTTP_PORT + 1)) /tmp/md-panel-kisa.log \

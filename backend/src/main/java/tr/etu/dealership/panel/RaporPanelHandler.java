@@ -59,6 +59,15 @@ public final class RaporPanelHandler extends PanelHandler {
     public RaporPanelHandler(PanelVeritabani db, Oturumlar oturumlar) {
         super(db, oturumlar);
         rota("GET", "/panel/rapor/ozet", Rol.RAPOR, this::ozetUcu);
+        rota("GET", "/panel/rapor/randevu\\.xlsx", Rol.RAPOR, this::excel);
+    }
+
+    private Object excel(Istek i) throws Exception {
+        Aralik a = Aralik.oku(i);
+        String ad = "randevular_" + a.baslangic() + "_" + a.bitis()
+                + (a.subeId() == null ? "" : "_sube" + a.subeId()) + ".xlsx";
+        return new Dosya(ExcelRaporu.uret(i.conn(), a),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ad);
     }
 
     private Object ozetUcu(Istek i) throws Exception {

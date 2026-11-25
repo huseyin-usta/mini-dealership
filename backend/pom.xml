@@ -21,6 +21,7 @@
     <logback.version>1.5.6</logback.version>
     <junit.version>5.10.2</junit.version>
     <jbcrypt.version>0.4</jbcrypt.version>
+    <fastexcel.version>0.20.3</fastexcel.version>
   </properties>
 
   <dependencies>
@@ -67,6 +68,12 @@
       <groupId>org.mindrot</groupId>
       <artifactId>jbcrypt</artifactId>
       <version>${jbcrypt.version}</version>
+    </dependency>
+    <!-- Panel raporu: tek yönlü .xlsx üretimi (DB → Excel; okuma/içe aktarma yok) -->
+    <dependency>
+      <groupId>org.dhatim</groupId>
+      <artifactId>fastexcel</artifactId>
+      <version>${fastexcel.version}</version>
     </dependency>
     <!-- Test -->
     <dependency>
