@@ -12,12 +12,14 @@ const MENU = [
   ['randevu-ekle', 'Randevu ekle', 'randevu-ekle'],
   ['araclar', 'Araçlar', 'araclar'],
   ['servis', 'Servis kayıtları', 'servis'],
+  ['musteriler', 'Müşteriler', 'musteriler'],
 ];
 
 // Menüde görünmeyen detay rotaları → modül ve menüde vurgulanacak öğe
 const DETAY = {
   arac: ['araclar', 'araclar'],
   'servis-kaydi': ['servis', 'servis'],
+  musteri: ['musteriler', 'musteriler'],
 };
 
 const kok = document.getElementById('uygulama');
