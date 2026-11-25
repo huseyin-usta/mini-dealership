@@ -52,6 +52,7 @@ public final class RandevuPanelHandler extends PanelHandler {
         super(db, oturumlar);
         rota("GET", "/panel/randevu", Rol.PERSONEL, this::listele);
         rota("POST", "/panel/randevu", Rol.PERSONEL, this::ekle);
+        rota("POST", "/panel/randevu/(\\d+)/durum", Rol.PERSONEL, this::durumDegistir);
     }
 
     // ---- §3 Listeleme -----------------------------------------------------------
@@ -259,6 +260,47 @@ public final class RandevuPanelHandler extends PanelHandler {
     static String ilkSatir(String mesaj) {
         String m = mesaj.lines().findFirst().orElse("");
         return m.startsWith("ERROR: ") ? m.substring(7) : m;
+    }
+
+    // ---- §5 Durum değişikliği -------------------------------------------------------
+
+    private Object durumDegistir(Istek i) throws Exception {
+        int id = i.yolSayi(1);
+        i.alanlar(Set.of("durum"));
+        String hedef = i.zorunluMetin("durum", 16);
+        if (!Set.of("TAMAMLANDI", "GELMEDI", "IPTAL").contains(hedef)) {
+            throw Istek.gecersiz("durum TAMAMLANDI, GELMEDI veya IPTAL olmalı.");
+        }
+        Connection c = i.conn();
+        String mevcut;
+        LocalDateTime baslangic;
+        try (PreparedStatement ps = c.prepareStatement(
+                "SELECT durum, baslangic FROM randevu WHERE randevu_id = ? FOR UPDATE")) {
+            ps.setInt(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) throw Istek.bulunamadi("Randevu");
+                mevcut = rs.getString(1);
+                baslangic = rs.getTimestamp(2).toLocalDateTime();
+            }
+        }
+        if (!"PLANLANDI".equals(mevcut)) {
+            throw ApiHatasi.goster("GECERSIZ_GECIS",
+                    "Yalnızca planlanmış randevunun durumu değiştirilebilir (şu an: " + mevcut + ").",
+                    409, Map.of("mevcut_durum", mevcut));
+        }
+        if (!"IPTAL".equals(hedef) && baslangic.isAfter(LocalDateTime.now(ISTANBUL))) {
+            throw ApiHatasi.goster("ZAMANI_GELMEDI",
+                    "Başlamamış randevu tamamlandı veya gelmedi olarak işaretlenemez.", 409, null);
+        }
+        try (PreparedStatement ps = c.prepareStatement(
+                "UPDATE randevu SET durum = ? WHERE randevu_id = ?")) {
+            ps.setString(1, hedef);
+            ps.setInt(2, id);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw dbHatasi(e);
+        }
+        return tekRandevu(c, id);
     }
 
     // ---- Yardımcılar ------------------------------------------------------------------

@@ -415,6 +415,23 @@ case "$SONUC" in
 esac
 
 # ============================================================================
+echo "--- POST /panel/randevu/{id}/durum ---"
+# durum <ad> <beklenen_durum> <parca> <id> <hedef>
+durum() { bekle "$1" "$2" "$3" -X POST -H "$AUTH" -H "$JSON" -d "{\"durum\":\"$5\"}" "$TABAN/panel/randevu/$4/durum"; }
+durum "Geçmiş planlı randevu TAMAMLANDI yapılır" 200 '"durum":"TAMAMLANDI"' 6 TAMAMLANDI
+durum "Tamamlanmış randevunun durumu değişmez 409" 409 '"kod":"GECERSIZ_GECIS"' 6 IPTAL
+durum "Gelecekteki randevu TAMAMLANDI yapılamaz 409" 409 '"kod":"ZAMANI_GELMEDI"' 4 TAMAMLANDI
+durum "Gelecekteki randevu GELMEDI yapılamaz 409" 409 '"kod":"ZAMANI_GELMEDI"' 4 GELMEDI
+durum "Gelecekteki randevu iptal edilir" 200 "\"randevu_id\":4,\"baslangic\":\"${GUN}T11:00\",\"bitis\":\"${GUN}T12:00\",\"durum\":\"IPTAL\"" 4 IPTAL
+durum "PLANLANDI hedef durum olamaz 400" 400 'TAMAMLANDI, GELMEDI veya IPTAL' 4 PLANLANDI
+durum "İptal edilmiş randevu tekrar iptal edilemez 409" 409 '"mevcut_durum":"IPTAL"' 4 IPTAL
+durum "Olmayan randevu 404" 404 'Randevu bulunamadı' 9999 IPTAL
+durum "int sınırını aşan id 404" 404 '"kod":"BULUNAMADI"' 99999999999 IPTAL
+bekle "Sayısal olmayan id 404 YOL_YOK" 404 '"kod":"YOL_YOK"' -X POST -H "$AUTH" -H "$JSON" -d '{"durum":"IPTAL"}' "$TABAN/panel/randevu/abc/durum"
+bekle "GET /durum 405" 405 'Bu yöntem desteklenmiyor' -H "$AUTH" "$TABAN/panel/randevu/4/durum"
+randevu_ekle "İptal edilen saat yeniden verilebilir (EXCLUDE iptali saymaz)" 201 "\"baslangic\":\"${GUN}T11:00\"" \
+  "$(govde +905550000099 ARAC_INCELEME 2 11:00)"
+
 # ============================================================================
 echo "--- Başlangıç ve yapılandırma ---"
 baslat $((HTTP_PORT + 1)) /tmp/md-panel-kisa.log \
