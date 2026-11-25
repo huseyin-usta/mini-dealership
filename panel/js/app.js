@@ -10,10 +10,12 @@ import { h, yerlestir, uyari, yukleniyor } from './dom.js';
 const MENU = [
   ['randevular', 'Bugünkü randevular', 'randevular'],
   ['randevu-ekle', 'Randevu ekle', 'randevu-ekle'],
+  ['araclar', 'Araçlar', 'araclar'],
 ];
 
 // Menüde görünmeyen detay rotaları → modül ve menüde vurgulanacak öğe
 const DETAY = {
+  arac: ['araclar', 'araclar'],
 };
 
 const kok = document.getElementById('uygulama');
