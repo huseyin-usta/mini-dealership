@@ -33,15 +33,26 @@ session'lara ve ekip arkadaşına bağlam aktarımı içindir.
   `GET /bot/slot`, `GET /bot/arac`, `POST /bot/randevu`, `GET /bot/randevu`,
   `POST /bot/randevu/{id}/iptal`, `POST /bot/musteri` ve `POST /bot/mesaj`
   (LLM giriş noktası). Köprü↔backend arasında `X-Bot-Token` (BOT_TOKEN, ≥32 karakter)
-  zorunlu; varsayılan bind `127.0.0.1` (`BIND_ADRESI`). Kalan iş: WhatsApp köprüsü,
-  panel API'leri, panel ve Docker Compose.
+  zorunlu; varsayılan bind `127.0.0.1` (`BIND_ADRESI`).
+- **Panel API + arayüz (Şevda) — tamamlandı (25 Kasım).** `docs/api/panel-sozlesmesi.md`:
+  giriş/çıkış (bcrypt + bellek içi oturum, kaba kuvvet kilidi), katalog, randevu
+  (liste/ekle/durum), araç, servis (liste/detay/durum/işlem), müşteri + bot konuşmaları,
+  rapor özeti ve tek yönlü Excel (`rapor` rolü, maskeli). Backend panel için ayrı bir
+  **NOINHERIT** login rolüyle bağlanır (`PANEL_DB_USER`/`PANEL_DB_PASS`, `personel` +
+  `rapor` üyesi; her rota `SET LOCAL ROLE`). Ortam değişkeni yoksa panel kapalı, bot
+  etkilenmez. Arayüz `panel/` (düz HTML/JS) JAR'a gömülü, backend `/` adresinden sunar.
+  Yerel deneme: `scripts/panel-demo.sh` (sentetik veri + demo hesapları).
+  Kapsam dışı (backend sahibine): satış transaction'ı, servis açma/teslim.
 - Test: `scripts/test-db.sh` 23 senaryo (trigger, view, rol/RLS, müşteri izolasyonu);
   `scripts/test-bot-http.sh` 195 HTTP senaryosu (gerçek Postgres + gerçek JAR + sahte Gemini
   stub'ı; token/kimlik/müsaitlik/stok/randevu/LLM döngüsü/idempotency/hatalar, eşzamanlılık
-  dahil). Hepsi geçiyor.
+  dahil); `scripts/test-panel-http.sh` 236 HTTP senaryosu (gerçek panel rolü; giriş/kilit/
+  oturum, rol yetkileri, DB kural hatalarının çevrimi, eşzamanlılık, Excel'de PII
+  sızıntısı, statik dosya güvenliği). Hepsi geçiyor.
 - Şema görselleştirme: `scripts/sema-diyagram.sh` (tbls + geçici Docker Postgres)
   → `docs/sema/` çıktısı güncel şemayla (tablolar, view'lar, trigger'lar, indeksler) yenilendi.
-- Kalan işler: bot API'nin kalan uçları, WhatsApp köprüsü, panel API'leri, panel (HTML/JS, Şevda), Docker Compose.
+- Kalan işler: WhatsApp köprüsü entegrasyonu, Docker Compose (panel login rolü ve
+  `PANEL_DB_*` dahil), satış transaction ucu, son rapor.
 - **Açık takip (DB invariant):** `fn_randevu_dogrula` trigger'ı TESLIMAT/bakım/
   servise girişte aracın müşteriye ait olduğunu **denetlemiyor**; tek savunma
   Java tarafı (`RandevuHandler` + `SlotHandler`). DDL mühürlü olduğu için bu turda
