@@ -6,7 +6,9 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -21,6 +23,7 @@ public final class MusteriPanelHandler extends PanelHandler {
         super(db, oturumlar);
         rota("GET", "/panel/musteri", Rol.PERSONEL, this::listele);
         rota("GET", "/panel/musteri/(\\d+)", Rol.PERSONEL, this::detay);
+        rota("GET", "/panel/musteri/(\\d+)/mesaj", Rol.PERSONEL, this::mesajlar);
     }
 
     /**
@@ -111,5 +114,56 @@ public final class MusteriPanelHandler extends PanelHandler {
         return veri;
     }
 
-
+    /**
+     * Mesajlar yeniden eskiye, imleçli sayfalama: {@code once} verilen mesajdan
+     * daha eskiler. (zaman, mesaj_id) sırası kullanılır; mesaj_id zamanla aynı
+     * sırada olmak zorunda değil.
+     */
+    private Object mesajlar(Istek i) throws Exception {
+        i.yalnizca(Set.of("once", "limit"));
+        int id = i.yolSayi(1);
+        Integer once = i.sayiParam("once");
+        int limit = i.limit();
+        Connection c = i.conn();
+        if (RandevuPanelHandler.tekSayi(c, "SELECT 1 FROM musteri WHERE musteri_id = ?", id) == null) {
+            throw Istek.bulunamadi("Müşteri");
+        }
+        if (once != null) {
+            try (PreparedStatement ps = c.prepareStatement(
+                    "SELECT 1 FROM mesaj WHERE mesaj_id = ? AND musteri_id = ?")) {
+                ps.setInt(1, once);
+                ps.setInt(2, id);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) throw Istek.gecersiz("once bu müşterinin bir mesajı olmalı.");
+                }
+            }
+        }
+        List<Map<String, Object>> satirlar;
+        try (PreparedStatement ps = c.prepareStatement("""
+                SELECT m.mesaj_id, m.yon, m.zaman, m.icerik
+                  FROM mesaj m
+                 WHERE m.musteri_id = ?
+                   AND (?::int IS NULL
+                        OR (m.zaman, m.mesaj_id) < (SELECT o.zaman, o.mesaj_id FROM mesaj o WHERE o.mesaj_id = ?))
+                 ORDER BY m.zaman DESC, m.mesaj_id DESC
+                 LIMIT ?""")) {
+            ps.setInt(1, id);
+            if (once == null) {
+                ps.setNull(2, Types.INTEGER);
+                ps.setNull(3, Types.INTEGER);
+            } else {
+                ps.setInt(2, once);
+                ps.setInt(3, once);
+            }
+            ps.setInt(4, limit + 1);   // bir fazlası: daha eski mesaj var mı?
+            satirlar = Satirlar.liste(ps);
+        }
+        boolean devami = satirlar.size() > limit;
+        if (devami) satirlar = satirlar.subList(0, limit);
+        Map<String, Object> veri = new LinkedHashMap<>();
+        veri.put("musteri_id", id);
+        veri.put("mesajlar", satirlar);
+        veri.put("sonraki_once", devami ? satirlar.get(satirlar.size() - 1).get("mesaj_id") : null);
+        return veri;
+    }
 }

@@ -574,6 +574,19 @@ bekle "Sahip olunan araçlar" 200 '"araclar":[{"vin":"PNL00000000000004","plaka"
   -H "$AUTH" "$TABAN/panel/musteri/1"
 bekle "Olmayan müşteri 404" 404 'Müşteri bulunamadı' -H "$AUTH" "$TABAN/panel/musteri/999"
 
+echo "--- GET /panel/musteri/{id}/mesaj ---"
+bekle "En yeni mesajlar önce, varsayılan 50" 200 '"mesajlar":[{"mesaj_id":1,"yon":"GIDEN"' -H "$AUTH" "$TABAN/panel/musteri/1/mesaj"
+bekle "Daha eski mesaj varsa imleç döner" 200 '"sonraki_once":50' -H "$AUTH" "$TABAN/panel/musteri/1/mesaj"
+bekle "İmleçle sonraki sayfa: kalan 10 mesaj" 200 '"mesajlar":[{"mesaj_id":51,' -H "$AUTH" "$TABAN/panel/musteri/1/mesaj?once=50"
+bekle "Son sayfada imleç null" 200 '"sonraki_once":null' -H "$AUTH" "$TABAN/panel/musteri/1/mesaj?once=50"
+N=$(curl -s -H "$AUTH" "$TABAN/panel/musteri/1/mesaj?once=50" | grep -o '"mesaj_id"' | wc -l | tr -d ' ')
+[ "$N" = "10" ] && gec "İkinci sayfada tam 10 mesaj (tekrar/atlama yok)" || kal "İkinci sayfada $N mesaj"
+bekle "limit ile sayfa boyu" 200 '"sonraki_once":3' -H "$AUTH" "$TABAN/panel/musteri/1/mesaj?limit=3"
+bekle "Başka müşterinin mesajı imleç olamaz 400" 400 'once bu müşterinin' -H "$AUTH" "$TABAN/panel/musteri/2/mesaj?once=5"
+bekle "Mesajı olmayan müşteri boş liste" 200 '"mesajlar":[],"sonraki_once":null' -H "$AUTH" "$TABAN/panel/musteri/3/mesaj"
+bekle "Olmayan müşterinin mesajları 404" 404 'Müşteri bulunamadı' -H "$AUTH" "$TABAN/panel/musteri/999/mesaj"
+bekle "Mesajlar salt-okunur: POST 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' -X POST -H "$AUTH" -H "$JSON" -d '{"icerik":"x"}' "$TABAN/panel/musteri/1/mesaj"
+
 # ============================================================================
 echo "--- Başlangıç ve yapılandırma ---"
 baslat $((HTTP_PORT + 1)) /tmp/md-panel-kisa.log \
