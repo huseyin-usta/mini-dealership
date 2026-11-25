@@ -17,6 +17,7 @@ public final class PanelUclari {
         sunucu.createContext("/panel/arac", new AracPanelHandler(db, oturumlar));
         sunucu.createContext("/panel/servis", new ServisPanelHandler(db, oturumlar));
         sunucu.createContext("/panel/musteri", new MusteriPanelHandler(db, oturumlar));
+        sunucu.createContext("/panel/rapor", new RaporPanelHandler(db, oturumlar));
 
         // Tanımsız /panel/* yolları: önce oturum, sonra 404 (yolların varlığı sızmasın).
         sunucu.createContext("/panel", new PanelHandler(db, oturumlar) { });

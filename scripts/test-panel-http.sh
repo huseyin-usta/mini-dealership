@@ -165,6 +165,12 @@ INSERT INTO servis_durum_gecmisi (servis_kaydi_id, durum, zaman) VALUES
   (3, 'INCELENIYOR', :'gecmis'::date + time '12:30'),
   (4, 'TESLIME_HAZIR', :'gecmis'::date + time '14:00'),
   (4, 'TAMAMLANDI', :'gecmis'::date + time '17:00');
+
+-- Rapor: iki tamamlanmış test sürüşü; birinin müşterisine ertesi gün aynı modelden teslimat
+INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak) VALUES
+  (1, 1, 'TEST_SURUSU', 1, 'PNL00000000000001', (:'gecmis' || ' 09:00')::timestamp, (:'gecmis' || ' 10:00')::timestamp, 'TAMAMLANDI', 'WHATSAPP'),
+  (2, 1, 'TEST_SURUSU', 7, 'PNL00000000000002', (:'gecmis' || ' 15:00')::timestamp, (:'gecmis' || ' 16:00')::timestamp, 'TAMAMLANDI', 'PANEL'),
+  (1, 1, 'TESLIMAT',    1, 'PNL00000000000004', (:'gecmis'::date + 1 || ' 14:00')::timestamp, (:'gecmis'::date + 1 || ' 15:00')::timestamp, 'TAMAMLANDI', 'PANEL');
 SQL
 
 echo "==> Backend başlatılıyor (port $HTTP_PORT)..."
@@ -586,6 +592,29 @@ bekle "Başka müşterinin mesajı imleç olamaz 400" 400 'once bu müşterinin'
 bekle "Mesajı olmayan müşteri boş liste" 200 '"mesajlar":[],"sonraki_once":null' -H "$AUTH" "$TABAN/panel/musteri/3/mesaj"
 bekle "Olmayan müşterinin mesajları 404" 404 'Müşteri bulunamadı' -H "$AUTH" "$TABAN/panel/musteri/999/mesaj"
 bekle "Mesajlar salt-okunur: POST 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' -X POST -H "$AUTH" -H "$JSON" -d '{"icerik":"x"}' "$TABAN/panel/musteri/1/mesaj"
+
+# ============================================================================
+echo "--- GET /panel/rapor/ozet ---"
+RAPOR="baslangic=$GECMIS&bitis=$GUN"
+bekle "Özet: durum sayıları ve oranlar" 200 '"ozet":{"toplam":' -H "$AUTH" "$TABAN/panel/rapor/ozet?$RAPOR"
+bekle "Şube doluluk sıralaması (RANK)" 200 '"sube_doluluk":[{"sube_id":1,"sehir":"Ankara","sube_adi":"Çankaya"' \
+  -H "$AUTH" "$TABAN/panel/rapor/ozet?$RAPOR"
+bekle "Şube 2 ikinci sırada" 200 '"sube_id":2,"sehir":"İstanbul","sube_adi":"Kadıköy","randevu":1,"tamamlanan":0,"sira":2' \
+  -H "$AUTH" "$TABAN/panel/rapor/ozet?$RAPOR"
+bekle "Kaynak dağılımı yüzdeyle" 200 '"kaynak_dagilimi":[{"kaynak":"PANEL"' -H "$AUTH" "$TABAN/panel/rapor/ozet?$RAPOR"
+bekle "Test sürüşünden satışa dönüşüm (60 gün içinde teslimat)" 200 \
+  '"test_surusu_donusum":[{"model_adi":"Ioniq 5","test_surusu":2,"satisa_donen":1}]' \
+  -H "$AUTH" "$TABAN/panel/rapor/ozet?$RAPOR"
+bekle "Şube filtresi" 200 '"sube_doluluk":[{"sube_id":2' -H "$AUTH" "$TABAN/panel/rapor/ozet?$RAPOR&sube_id=2"
+bekle "Boş aralıkta sıfırlar, oranlar null" 200 '"ozet":{"toplam":0,"planlandi":0,"tamamlandi":0,"iptal":0,"gelmedi":0,"iptal_yuzde":null,"gelmeme_yuzde":null}' \
+  -H "$AUTH" "$TABAN/panel/rapor/ozet?baslangic=2020-01-01&bitis=2020-01-31"
+bekle "Tarihler zorunlu 400" 400 'baslangic ve bitis zorunlu' -H "$AUTH" "$TABAN/panel/rapor/ozet"
+bekle "bitis baslangictan önce 400" 400 'önce olamaz' -H "$AUTH" "$TABAN/panel/rapor/ozet?baslangic=2026-02-01&bitis=2026-01-01"
+bekle "366 günden uzun aralık (367 gün) 400 ARALIK_COK_GENIS" 400 '"kod":"ARALIK_COK_GENIS"' \
+  -H "$AUTH" "$TABAN/panel/rapor/ozet?baslangic=2025-01-01&bitis=2026-01-02"
+bekle "Tam 366 gün (artık yıl) kabul" 200 '"ok":true' -H "$AUTH" "$TABAN/panel/rapor/ozet?baslangic=2024-01-01&bitis=2024-12-31"
+yok "Özet müşteri PII'si taşımaz" '+90555' -H "$AUTH" "$TABAN/panel/rapor/ozet?$RAPOR"
+bekle "Oturumsuz rapor 401" 401 '"kod":"OTURUM_YOK"' "$TABAN/panel/rapor/ozet?$RAPOR"
 
 # ============================================================================
 echo "--- Başlangıç ve yapılandırma ---"
