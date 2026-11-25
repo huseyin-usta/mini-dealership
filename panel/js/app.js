@@ -9,6 +9,7 @@ import { h, yerlestir, uyari, yukleniyor } from './dom.js';
 // Menü sırası. [rota, başlık, modül]
 const MENU = [
   ['randevular', 'Bugünkü randevular', 'randevular'],
+  ['randevu-ekle', 'Randevu ekle', 'randevu-ekle'],
 ];
 
 // Menüde görünmeyen detay rotaları → modül ve menüde vurgulanacak öğe
