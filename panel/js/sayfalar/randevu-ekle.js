@@ -92,12 +92,12 @@ export async function goster(kok, { parametre, baglam }) {
 
   async function musteriKontrol() {
     const tel = telefonDegeri();
-    if (tel) telefon.value = tel;   // personel kaydedilecek biçimi görsün
     yerlestir(musteriBilgi);
     if (!E164.test(tel)) {
       if (tel) yerlestir(musteriBilgi, 'Telefon numarası geçersiz.');
       return;
     }
+    telefon.value = tel;   // personel kaydedilecek biçimi görsün
     try {
       const m = await musteriBul(tel);
       if (m) {
