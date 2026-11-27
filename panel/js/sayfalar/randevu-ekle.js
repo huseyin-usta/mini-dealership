@@ -154,6 +154,7 @@ export async function goster(kok, { parametre, baglam }) {
       yerlestir(musteriBilgi);
       calisanlariDoldur();
       araclariDoldur();
+      oncedenDoldur();   // aynı müşteriye bir randevu daha verilebilsin
     } catch (err) {
       const ek = err.detay?.sebep && CAKISMA[err.detay.sebep];
       yerlestir(mesaj, uyari('hata', ek || err.message));
