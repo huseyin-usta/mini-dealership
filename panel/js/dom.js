@@ -124,13 +124,13 @@ export function yukleniyor() {
 
 /**
  * Tablo. sutunlar: [{ ad, deger: (satir) => düğüm|metin, sinif }]
- * satirTik verilirse satır tıklanabilir.
+ * satirTik verilirse satır tıklanabilir; satirSinif satıra ek sınıf verir.
  */
-export function tablo(sutunlar, satirlar, { satirTik, bosMetin = 'Kayıt yok.' } = {}) {
+export function tablo(sutunlar, satirlar, { satirTik, satirSinif, bosMetin = 'Kayıt yok.' } = {}) {
   const govde = satirlar.length === 0
     ? [h('tr', {}, h('td', { class: 'bos', colspan: sutunlar.length }, bosMetin))]
     : satirlar.map((s) => h('tr', {
-      class: satirTik ? 'tik' : null,
+      class: [satirTik ? 'tik' : null, satirSinif ? satirSinif(s) : null].filter(Boolean).join(' ') || null,
       onclick: satirTik ? (e) => { if (!e.target.closest('a, button')) satirTik(s); } : null,
     }, sutunlar.map((c) => h('td', { class: c.sinif }, c.deger(s)))));
   return h('div', { class: 'tablo-kap' },
