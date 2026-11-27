@@ -11,9 +11,20 @@ const CAKISMA = {
   MUSTERI_DOLU: 'Müşterinin bu saatte başka bir randevusu var.',
 };
 
-export async function goster(kok, { baglam }) {
+export async function goster(kok, { parametre, baglam }) {
   const { katalog, oturum } = baglam;
   const mesaj = h('div');
+
+  // #/randevu-ekle/<musteri_id>: müşteri kartından gelindi, bilgileri önceden doldur.
+  // Adreste telefon değil kimlik taşınır (tarayıcı geçmişine PII yazılmasın).
+  let onceden = null;
+  if (parametre) {
+    try {
+      onceden = await api(`/panel/musteri/${encodeURIComponent(parametre)}`);
+    } catch (e) {
+      yerlestir(mesaj, uyari('hata', `Müşteri bilgisi alınamadı: ${e.message}`));
+    }
+  }
 
   const telefon = h('input', { name: 'telefon', placeholder: '+905321234567', required: true,
     pattern: '\\+[1-9][0-9]{7,14}', title: '+ ile başlayan uluslararası biçim', autocomplete: 'off' });
@@ -70,6 +81,7 @@ export async function goster(kok, { baglam }) {
   }
 
   async function musteriBul(tel) {
+    if (onceden && onceden.telefon === tel) return onceden;
     // Tam eşleşme: benzer numaralı müşteri "kayıtlı" sanılmasın.
     const v = await api(`/panel/musteri${sorgu({ telefon: tel })}`);
     return v.musteriler[0] || null;
@@ -97,8 +109,17 @@ export async function goster(kok, { baglam }) {
   telefon.addEventListener('change', musteriKontrol);
   sube.addEventListener('change', () => { calisanlariDoldur(); araclariDoldur(); });
   tur.addEventListener('change', () => { calisanlariDoldur(); araclariDoldur(); });
+  function oncedenDoldur() {
+    if (!onceden) return;
+    telefon.value = onceden.telefon;
+    ad.value = onceden.ad || '';
+    soyad.value = onceden.soyad || '';
+    musteriKontrol();
+  }
+
   calisanlariDoldur();
   araclariDoldur();
+  oncedenDoldur();
 
   const form = h('form', { class: 'form', onsubmit: gonder },
     alan('Telefon', telefon), alan('Ad', ad), alan('Soyad', soyad), musteriBilgi,
