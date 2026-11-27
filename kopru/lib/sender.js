@@ -59,9 +59,16 @@ export function islenecekMesajlar(messages) {
   for (const msg of messages || []) {
     if (!msg || msg.key?.fromMe) continue;
     const jid = msg.key?.remoteJid;
+    if (!jid) continue;
+    // Grup, durum ve kanal mesajları kişi adına değildir.
+    if (jid.endsWith("@g.us") || jid.endsWith("@broadcast") || jid.endsWith("@newsletter")) {
+      continue;
+    }
     const sender = resolveSender(jid, msg.key?.participant,
       msg.key?.remoteJidAlt, msg.key?.participantAlt);
-    if (!sender) continue;
+    // LID ise telefon henüz çözülememiş olabilir; köprü PN eşlemesini dener.
+    const lid = String(jid).endsWith("@lid");
+    if (!sender && !lid) continue;
     sonuc.push({
       jid,
       sender,

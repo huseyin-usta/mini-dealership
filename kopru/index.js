@@ -22,7 +22,7 @@ import qrcode from "qrcode-terminal";
 import { loadConfig } from "./lib/config.js";
 import { createPairingServer } from "./lib/pairing.js";
 import { gelenMesajiIsle } from "./lib/mesaj.js";
-import { islenecekMesajlar } from "./lib/sender.js";
+import { islenecekMesajlar, toE164 } from "./lib/sender.js";
 
 const KOK = path.dirname(fileURLToPath(import.meta.url));
 const AUTH_DIR = path.join(KOK, "auth");
@@ -134,13 +134,35 @@ async function baslat() {
 
   soket.ev.on("messages.upsert", async (olay) => {
     if (olay.type !== "notify") return;
+    // Teşhis: yalnızca LOG_LEVEL=debug iken ham JID alanlarını gör (içerik loglanmaz).
+    if (cfg.logLevel === "debug") {
+      for (const ham of olay.messages || []) {
+        if (ham.key?.fromMe) continue;
+        console.log(`🔎 jid=${ham.key?.remoteJid} alt=${ham.key?.remoteJidAlt} partAlt=${ham.key?.participantAlt}`);
+      }
+    }
     // Sıralı işlenir: aynı müşterinin iki mesajı birbirini kesmesin.
     for (const m of islenecekMesajlar(olay.messages)) {
-      console.log(`📩 [${m.sender}] ${m.metin ?? "(medya)"}`);
+      let sender = m.sender;
+      if (!sender) {
+        // WhatsApp LID gönderdiyse ve mesajda PN (remoteJidAlt) yoksa,
+        // oturumdaki LID→PN eşlemesinden çözmeyi dene.
+        try {
+          const pn = await soket.signalRepository?.lidMapping?.getPNForLID(m.jid);
+          sender = pn ? toE164(pn) : null;
+        } catch (e) {
+          log.warn(`LID çözümlenemedi: ${e.message}`);
+        }
+      }
+      if (!sender) {
+        console.log(`⚠️ Kimlik çözülemedi, mesaj atlandı: ${m.jid}`);
+        continue;
+      }
+      console.log(`📩 [${sender}] ${m.metin ?? "(medya)"}`);
       await gelenMesajiIsle({
         cfg,
         jid: m.jid,
-        sender: m.sender,
+        sender,
         metin: m.metin,
         kaynakId: m.kaynakId,
         gonder: (jid, metin) => soket.sendMessage(jid, { text: metin }),

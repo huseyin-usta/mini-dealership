@@ -81,6 +81,16 @@ test("islenecekMesajlar: LID mesajında telefon PN alanından gelir", () => {
   assert.equal(sonuc[0].sender, "+905551112233");          // kimlik PN'den
 });
 
+test("islenecekMesajlar: LID eşlemesi yoksa da listeye girer (köprü çözer)", () => {
+  const sonuc = islenecekMesajlar([{
+    key: { remoteJid: "63436683780257@lid", id: "M" },
+    message: { conversation: "merhaba" },
+  }]);
+  assert.equal(sonuc.length, 1);
+  assert.equal(sonuc[0].sender, null);
+  assert.equal(sonuc[0].jid, "63436683780257@lid");
+});
+
 test("islenecekMesajlar: boş girdi", () => {
   assert.deepEqual(islenecekMesajlar([]), []);
   assert.deepEqual(islenecekMesajlar(undefined), []);
