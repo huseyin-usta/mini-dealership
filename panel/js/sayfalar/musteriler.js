@@ -34,6 +34,7 @@ async function liste(kok, baglam) {
           { ad: 'Son randevu', deger: (m) => m.son_randevu_zamani
             ? [bicim.zaman(m.son_randevu_zamani), ' · ', m.son_randevu_turu, ' ', rozet(m.son_randevu_durumu)]
             : '—' },
+          { ad: '', deger: (m) => h('a', { href: `#/randevu-ekle/${m.musteri_id}` }, 'Randevu ekle') },
         ], v.musteriler, {
           satirTik: (m) => { location.hash = `#/musteri/${m.musteri_id}`; },
           bosMetin: 'Müşteri bulunamadı.',
