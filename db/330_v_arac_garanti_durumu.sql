@@ -7,14 +7,21 @@
 --   * Aracın kilometresi tutulmaz; son bilinen km = en son servis girişindeki km
 -- Ardışık bakımlar arasındaki fark LAG window function'ı ile bulunur.
 -- Yalnızca satılmış (satış kaydı olan) araçlar listelenir. PII içermez.
+--
+-- NOT MATERIALIZED: satis ve gecerli_servis birden çok yerde kullanıldığı için
+-- PostgreSQL bunları varsayılan olarak bir kez, TÜM araçlar için hesaplar
+-- (CTE Scan); `WHERE vin = ...` filtresi içeri inemez ve tek araç sorgusu
+-- ~166 ms sürer. Satır içine alınınca filtre GROUP BY / PARTITION BY arac_vin
+-- üzerinden indekslere iner: tek araç ~4 ms, tüm araçlar ~490 → ~550 ms
+-- (docs/analiz/indeks-analizi.md §7).
 CREATE VIEW v_arac_garanti_durumu AS
-WITH satis AS (
+WITH satis AS NOT MATERIALIZED (
     SELECT arac_vin, min(zaman)::timestamp AS satis_zamani
       FROM stok_hareketi
      WHERE hareket_turu = 'SATIS'
      GROUP BY arac_vin
 ),
-gecerli_servis AS (
+gecerli_servis AS NOT MATERIALIZED (
     SELECT r.arac_vin, r.baslangic, sk.giris_kilometresi AS km, sk.sebep
       FROM servis_kaydi sk
       JOIN randevu r ON r.randevu_id = sk.acilis_randevu_id
