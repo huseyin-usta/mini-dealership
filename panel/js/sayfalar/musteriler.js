@@ -91,7 +91,7 @@ async function detay(kok, id) {
         h('dl', { class: 'bilgi' },
           h('dt', {}, 'Telefon'), h('dd', { class: 'sayi' }, m.telefon),
           h('dt', {}, 'Kayıt'), h('dd', {}, bicim.zaman(m.kayit_zamani))),
-        h('p', {}, h('a', { href: '#/randevu-ekle' }, 'Bu müşteriye randevu ekle'))),
+        h('p', {}, h('a', { href: `#/randevu-ekle/${m.musteri_id}` }, 'Bu müşteriye randevu ekle'))),
       h('div', { class: 'kart' }, h('h2', {}, 'Araçları'),
         m.araclar.length
           ? h('ul', {}, m.araclar.map((a) => h('li', {},
