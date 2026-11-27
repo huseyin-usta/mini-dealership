@@ -37,6 +37,7 @@ fi
 [ -f "$JAR" ] || { echo "HATA: $JAR yok; önce derleyin" >&2; exit 1; }
 
 echo "==> PostgreSQL 17 test konteyneri başlatılıyor..."
+docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 docker run --rm -d --name "$CONTAINER" -e POSTGRES_PASSWORD="$PW" -p 127.0.0.1:$PORT:5432 \
   postgres:17-alpine >/dev/null
 
@@ -272,8 +273,9 @@ SELECT m.musteri_id, 1, 'SERVIS_GIRIS', 4, 'VIN00000000000042',
   FROM musteri m WHERE m.telefon = '+905550001199';
 INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak)
 SELECT m.musteri_id, 1, 'SERVIS_GIRIS', 4, 'VIN00000000000042',
-       :'g'::date - interval '7 day' + time '11:00',
-       :'g'::date - interval '7 day' + time '11:30', 'TAMAMLANDI', 'PANEL'
+       -- 21 gün: bugünün saatine bağlı kalmadan kesin geçmiş (g-7 bugün olabiliyordu)
+       :'g'::date - interval '21 day' + time '11:00',
+       :'g'::date - interval '21 day' + time '11:30', 'TAMAMLANDI', 'PANEL'
   FROM musteri m WHERE m.telefon = '+905550001199';
 -- Baslamis ama bitmemis PLANLANDI: iptal KAPALI olmali (baslangic gecmis).
 -- Tam gun pencereli test turu sayesinde saat kac olursa olsun seed calisir.
@@ -323,8 +325,9 @@ UPDATE arac SET durum = 'SATILDI', plaka = '06BB99',
 -- Bu musterinin yalniz servis gecmisi var: son_bakim null olmali
 INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak)
 SELECT m.musteri_id, 1, 'SERVIS_GIRIS', 4, 'VIN00000000000043',
-       :'g'::date - interval '10 day' + time '09:00',
-       :'g'::date - interval '10 day' + time '09:30', 'TAMAMLANDI', 'PANEL'
+       -- 14 gün: haftanın günü korunur (10 gün Pazar'a denk gelebiliyordu)
+       :'g'::date - interval '14 day' + time '12:00',
+       :'g'::date - interval '14 day' + time '12:30', 'TAMAMLANDI', 'PANEL'
   FROM musteri m WHERE m.telefon = '+905550001210';
 -- Gelecek ama iptal edilmis randevu: iki listede de degil, gecmis'te gorunmeli
 INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin, baslangic, bitis, durum, kaynak)
@@ -976,8 +979,8 @@ bekle "Randevu: PUT -> 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' \
 echo "--- GET /bot/randevu ---"
 TEL_G='X-Musteri-Telefon: +905550001199'
 G28=$(date -j -v-28d -f "%Y-%m-%d" "$GUN" +%Y-%m-%d)
+G21=$(date -j -v-21d -f "%Y-%m-%d" "$GUN" +%Y-%m-%d)
 G14=$(date -j -v-14d -f "%Y-%m-%d" "$GUN" +%Y-%m-%d)
-G7=$(date -j -v-7d -f "%Y-%m-%d" "$GUN" +%Y-%m-%d)
 
 RANDEVU=$(curl -s -w '\n%{http_code}' -H "$TOK" -H "$TEL_G" "$TABAN/bot/randevu")
 KOD_RD=$(printf '%s' "$RANDEVU" | tail -n1)
@@ -990,8 +993,8 @@ if [ "$KOD_RD" = "200" ] \
 else
   echo "[FAIL] Randevular: liste yaniti yanlis"; echo "       HTTP $KOD_RD $GOV_RD"; KALAN=$((KALAN + 1))
 fi
-# Gecmis azalan sirali: en yeni once (g-7), sonra g-14
-if printf '%s' "$GOV_RD" | grep -qF "\"tarih\":\"$G7\"" \
+# Gecmis azalan sirali: en yeni once (g-14), sonra g-21
+if printf '%s' "$GOV_RD" | grep -qF "\"tarih\":\"$G21\"" \
    && printf '%s' "$GOV_RD" | grep -qF "\"tarih\":\"$G14\"" \
    && printf '%s' "$GOV_RD" | grep -qF '"durum_adi":"Tamamlandı"'; then
   echo "[PASS] Randevular: gecmis tarihleri ve durum adi dogru"; GECEN=$((GECEN + 1))
