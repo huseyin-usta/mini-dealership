@@ -80,6 +80,7 @@ th, td { text-align: left; padding: .55rem .7rem; border-bottom: 1px solid var(-
 th { font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; color: var(--soluk); background: #f8fafc; white-space: nowrap; }
 tr.tik { cursor: pointer; }
 tr.tik:hover td { background: var(--ana-acik); }
+td.eylem { white-space: nowrap; }
 td.bos { text-align: center; color: var(--soluk); padding: 1.5rem; }
 .sayfalama { display: flex; gap: .5rem; align-items: center; justify-content: flex-end; margin-top: .75rem; color: var(--soluk); }
 
