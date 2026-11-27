@@ -11,7 +11,7 @@ session'lara ve ekip arkadaşına bağlam aktarımı içindir.
 3. `mini-dealership.md` — spec; PDF'lerle uyumlu tutulur (ör. mesai kuralı PDF'e
    göre düzeltildi). Değiştirmeden önce kullanıcıya sor.
 
-## Durum (21 Kasım 2026 itibarıyla)
+## Durum (27 Kasım 2026 itibarıyla)
 
 - GitHub reposu: **github.com/huseyin-usta/mini-dealership** (public, `main`).
   Commit yazarı: `h.usta@etu.edu.tr` (gt-arc maili KULLANILMAZ).
@@ -42,22 +42,37 @@ session'lara ve ekip arkadaşına bağlam aktarımı içindir.
   `rapor` üyesi; her rota `SET LOCAL ROLE`). Ortam değişkeni yoksa panel kapalı, bot
   etkilenmez. Arayüz `panel/` (düz HTML/JS) JAR'a gömülü, backend `/` adresinden sunar.
   Yerel deneme: `scripts/panel-demo.sh` (sentetik veri + demo hesapları).
-  Kapsam dışı (backend sahibine): satış transaction'ı, servis açma/teslim.
-- Test: `scripts/test-db.sh` 23 senaryo (trigger, view, rol/RLS, müşteri izolasyonu);
-  `scripts/test-bot-http.sh` 195 HTTP senaryosu (gerçek Postgres + gerçek JAR + sahte Gemini
-  stub'ı; token/kimlik/müsaitlik/stok/randevu/LLM döngüsü/idempotency/hatalar, eşzamanlılık
-  dahil); `scripts/test-panel-http.sh` 236 HTTP senaryosu (gerçek panel rolü; giriş/kilit/
-  oturum, rol yetkileri, DB kural hatalarının çevrimi, eşzamanlılık, Excel'de PII
-  sızıntısı, statik dosya güvenliği). Hepsi geçiyor.
+  Kapsam dışı (backend sahibine): satış transaction'ı, servis açma.
+- **Panel review sertleştirmesi (27 Kasım) — tamamlandı.** Ekip içi review
+  sonrası: giriş DoS sertleştirmesi (IP başına 60 deneme/dk → 429, 4 KB gövde,
+  bcrypt bağlantı dışında, sayaç temizliği), her istekte `aktif_mi` denetimi,
+  `tumu=true` ile tüm şubeler (araç/servis), müşteri `ON CONFLICT` (eşzamanlı
+  telefon yarışı), panel havuzunda `Europe/Istanbul`, `/panel/musteri?telefon=`
+  tam eşleşme, panel randevu eklemede sahiplik/servis hazırlığı (409
+  `ARAC_UYGUN_DEGIL`), VIN normalizasyonu. Detaylı commit: `4f126c3`.
+- **Randevu sahipliği DB'de (K2 kapandı).** `db/460_trg_randevu_sahiplik.sql`:
+  TESLIMAT/BAKIM/SERVIS_GIRIS'te araç müşterinin olmalı; SERVIS_TESLIM'de açık
+  ve TESLİME HAZIR servis kaydı bulunmalı. `CONSTRAINT TRIGGER DEFERRABLE`
+  (sentetik veri tek transaction'da önce randevuları yazabilsin; kural commit'te
+  doğrulanır). Panel ve bot ayrıca erken 4xx üretir. `test-db.sh` Test 24.
+- Test: `scripts/test-db.sh` **24** senaryo (trigger, view, rol/RLS, müşteri
+  izolasyonu, sahiplik); `scripts/test-bot-http.sh` **198** HTTP senaryosu (gerçek
+  Postgres + gerçek JAR + sahte Gemini stub'ı; token/kimlik/müsaitlik/stok/randevu/
+  LLM döngüsü/idempotency/hatalar, eşzamanlılık dahil); `scripts/test-panel-http.sh`
+  **256** HTTP senaryosu (gerçek panel rolü; giriş/kilit/IP sınırı/oturum,
+  rol yetkileri, DB kural hatalarının çevrimi, eşzamanlılık, Excel'de PII sızıntısı,
+  statik dosya güvenliği). `backend/src/test` altında `Oturumlar` için 3 zaman
+  tabanlı birim testi (`./mvnw test`). Hepsi geçiyor.
 - Şema görselleştirme: `scripts/sema-diyagram.sh` (tbls + geçici Docker Postgres)
   → `docs/sema/` çıktısı güncel şemayla (tablolar, view'lar, trigger'lar, indeksler) yenilendi.
-- Kalan işler: WhatsApp köprüsü entegrasyonu, Docker Compose (panel login rolü ve
-  `PANEL_DB_*` dahil), satış transaction ucu, son rapor.
-- **Açık takip (DB invariant):** `fn_randevu_dogrula` trigger'ı TESLIMAT/bakım/
-  servise girişte aracın müşteriye ait olduğunu **denetlemiyor**; tek savunma
-  Java tarafı (`RandevuHandler` + `SlotHandler`). DDL mühürlü olduğu için bu turda
-  dokunulmadı; trigger'a sahiplik + şube kuralı eklenmesi final rapor öncesi
-  değerlendirilecek (mevcut 195 test API'yi koruyor).
+- Kalan işler: Docker Compose (panel login rolü ve `PANEL_DB_*` dahil; O5:
+  TLS yokken panel portu yalnız localhost'a yayınlanmalı), satış transaction ucu,
+  sistem promptu gözden geçirmesi, son rapor + demo provası. WhatsApp köprüsü
+  (Baileys) çalışır durumda; panel arayüzü hazır olunca uçtan uca test edilecek.
+- **Sahiplik kuralı (çözüldü):** `fn_randevu_dogrula` (220) sahiplik
+  denetlemiyordu; `460_trg_randevu_sahiplik` bunu kapatıyor. Bot/panel ayrıca
+  erken 4xx üretir; DB commit'te son savunmadır. Yeni bir yazma yolu eklenirse
+  ek kontrol gerekmez, trigger devrededir.
 - **LLM backend'de** (`POST /bot/mesaj`): Gemini + araç döngüsü Java'da; araçlar kendi
   HTTP uçlarına `KENDI_URL` üzerinden çağrılır. `GEMINI_API_KEY` yoksa yalnız bu uç 503
   döner. Sistem promptu `backend/src/main/resources/sistem-promptu.md`.
