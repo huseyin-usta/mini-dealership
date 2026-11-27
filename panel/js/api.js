@@ -78,6 +78,8 @@ export async function api(yol, { yontem = 'GET', govde, dosya = false } = {}) {
     }
     throw new ApiHatasi(yanit.status, h.kod, h.mesaj || 'İşlem yapılamadı.', h.detay);
   }
+  // Başarılı yazma: menü rozetleri gibi özetler tazelensin.
+  if (yontem !== 'GET') window.dispatchEvent(new Event('panel-degisti'));
   return zarf.veri;
 }
 
