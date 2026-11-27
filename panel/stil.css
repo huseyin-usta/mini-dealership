@@ -86,6 +86,12 @@ th { font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; color: 
 tr.tik { cursor: pointer; }
 tr.tik:hover td { background: var(--ana-acik); }
 td.eylem { white-space: nowrap; }
+tr.suruyor td { background: var(--yesil-acik); }
+tr.suruyor td:first-child { box-shadow: inset 3px 0 0 var(--yesil); font-weight: 600; }
+tr.gecti td { color: var(--soluk); }
+.gun-etiketi { font-weight: 400; color: var(--soluk); }
+.gun-etiketi .rozet { margin-left: .5rem; vertical-align: middle; }
+.gun-gezinme button { min-width: 2.4rem; }
 td.bos { text-align: center; color: var(--soluk); padding: 1.5rem; }
 .sayfalama { display: flex; gap: .5rem; align-items: center; justify-content: flex-end; margin-top: .75rem; color: var(--soluk); }
 
