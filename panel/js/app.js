@@ -25,6 +25,15 @@ const DETAY = {
 
 const kok = document.getElementById('uygulama');
 let katalog = null;
+let sayfaTemizle = null;
+
+/** Sayfa değişince eski otomatik yenileme zamanlayıcısını durdurur. */
+function temizle() {
+  if (sayfaTemizle) {
+    sayfaTemizle();
+    sayfaTemizle = null;
+  }
+}
 
 function rotaCoz() {
   const [ad = '', ...kalan] = location.hash.replace(/^#\/?/, '').split('/');
@@ -39,6 +48,7 @@ function rotaCoz() {
 }
 
 async function cizdir() {
+  temizle();
   const { ad, parametre } = rotaCoz();
   const o = oturum.oku();
   if (!o) {
@@ -62,7 +72,18 @@ async function cizdir() {
   try {
     if (!katalog) katalog = await api('/panel/katalog');
     const sayfa = await import(`./sayfalar/${modul}.js`);
-    await sayfa.goster(icerik, { parametre, baglam: { katalog, oturum: o } });
+    await sayfa.goster(icerik, {
+      parametre,
+      baglam: {
+        katalog,
+        oturum: o,
+        // Sayfa kendi verisini periyodik tazeleyebilir; sekme gizliyken çalışmaz.
+        otomatikYenile(fn, ms = 15000) {
+          const id = setInterval(() => { if (!document.hidden) fn(); }, ms);
+          sayfaTemizle = () => clearInterval(id);
+        },
+      },
+    });
   } catch (e) {
     if (e instanceof ApiHatasi && e.kod === 'OTURUM_YOK') return;   // giriş ekranına dönüldü
     console.error(e);

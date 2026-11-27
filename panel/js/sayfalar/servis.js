@@ -13,7 +13,8 @@ export async function goster(kok, { parametre, baglam }) {
   return liste(kok, baglam);
 }
 
-async function liste(kok, { katalog, oturum }) {
+async function liste(kok, baglam) {
+  const { katalog, oturum } = baglam;
   const durum = { sube_id: String(oturum.calisan.sube_id), tumu: '', acik: 'true', gecikti: '', ara: '', sayfa: 1 };
   const sonuc = h('div');
   const ara = h('input', { type: 'search', placeholder: 'VIN veya plaka', maxlength: 17 });
@@ -31,8 +32,8 @@ async function liste(kok, { katalog, oturum }) {
   let zamanlayici;
   ara.addEventListener('input', () => { clearTimeout(zamanlayici); zamanlayici = setTimeout(oku, 300); });
 
-  async function yukle() {
-    yerlestir(sonuc, yukleniyor());
+  async function yukle(sessiz = false) {
+    if (!sessiz) yerlestir(sonuc, yukleniyor());
     try {
       const { sayfa, ...f } = durum;
       const v = await api(`/panel/servis${sorgu({ ...f, limit: LIMIT, sayfa })}`);
@@ -63,6 +64,7 @@ async function liste(kok, { katalog, oturum }) {
       h('label', { style: null }, 'Yalnızca gecikenler', gecikti)),
     h('div', { class: 'kart' }, sonuc));
   yukle();
+  baglam.otomatikYenile(() => yukle(true));
 }
 
 async function detay(kok, id) {

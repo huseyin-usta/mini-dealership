@@ -26,6 +26,14 @@ test("resolveSender: DM'de gönderen, grupta null", () => {
   assert.equal(resolveSender(null), null);
 });
 
+test("resolveSender: LID'de telefon PN alanından alınır", () => {
+  // WhatsApp v7 doğrudan sohbetlerde remoteJid olarak LID gönderebilir.
+  assert.equal(resolveSender("63436683780257@lid", undefined,
+    "905551112233@s.whatsapp.net"), "+905551112233");
+  // PN hiç yoksa yanlış numara yazmak yerine null.
+  assert.equal(resolveSender("63436683780257@lid"), null);
+});
+
 test("extractText: düz metin, alıntılı metin ve medya alt yazısı", () => {
   assert.equal(extractText({ conversation: "  merhaba   dünya " }), "merhaba dünya");
   assert.equal(extractText({ extendedTextMessage: { text: "selam" } }), "selam");
@@ -61,6 +69,16 @@ test("islenecekMesajlar: kendi mesajımız ve gruplar elenir", () => {
   });
   assert.equal(sonuc[1].metin, null);
   assert.equal(sonuc[1].kaynakId, "D");
+});
+
+test("islenecekMesajlar: LID mesajında telefon PN alanından gelir", () => {
+  const sonuc = islenecekMesajlar([{
+    key: { remoteJid: "63436683780257@lid", remoteJidAlt: "905551112233@s.whatsapp.net", id: "L" },
+    message: { conversation: "merhaba" },
+  }]);
+  assert.equal(sonuc.length, 1);
+  assert.equal(sonuc[0].jid, "63436683780257@lid");       // cevap LID'e gider
+  assert.equal(sonuc[0].sender, "+905551112233");          // kimlik PN'den
 });
 
 test("islenecekMesajlar: boş girdi", () => {

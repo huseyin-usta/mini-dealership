@@ -18,14 +18,23 @@ export function toE164(raw) {
 /**
  * Mesajın göndericisini döndürür: {@code +905321234567} veya {@code null}.
  * Grup mesajları ({@code @g.us}) işlenmez.
+ *
+ * <p>WhatsApp LID kullanıyorsa {@code remoteJid} telefon değil, opak bir
+ * kimliktir. Telefon numarası {@code remoteJidAlt}/{@code participantAlt}
+ * alanlarındadır; bunlar yoksa yanlış numara yazmak yerine {@code null} döner.
  */
-export function resolveSender(jid, participant) {
+export function resolveSender(jid, participant, jidAlt, participantAlt) {
   if (!jid) return null;
   // Grup, durum (status@broadcast) ve kanal mesajları kişi adına değildir.
   if (jid.endsWith("@g.us") || jid.endsWith("@broadcast") || jid.endsWith("@newsletter")) {
     return null;
   }
-  return toE164(participant || jid);
+  // Öncelik: PN (@s.whatsapp.net) taşıyan alanlar. LID (@lid) telefon değildir.
+  for (const aday of [participantAlt, jidAlt, participant, jid]) {
+    if (!aday) continue;
+    if (String(aday).endsWith("@s.whatsapp.net")) return toE164(aday);
+  }
+  return null;
 }
 
 /** Baileys mesajındaki düz metni döndürür; metin yoksa (medya vb.) null. */
@@ -50,7 +59,8 @@ export function islenecekMesajlar(messages) {
   for (const msg of messages || []) {
     if (!msg || msg.key?.fromMe) continue;
     const jid = msg.key?.remoteJid;
-    const sender = resolveSender(jid, msg.key?.participant);
+    const sender = resolveSender(jid, msg.key?.participant,
+      msg.key?.remoteJidAlt, msg.key?.participantAlt);
     if (!sender) continue;
     sonuc.push({
       jid,

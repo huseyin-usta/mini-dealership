@@ -45,8 +45,8 @@ export async function goster(kok, { baglam }) {
   for (const el of [tarih, tur, drm, calisan]) el.addEventListener('change', oku);
   sube.addEventListener('change', () => { calisanlariDoldur(); oku(); });
 
-  async function yukle() {
-    yerlestir(liste, yukleniyor());
+  async function yukle(sessiz = false) {
+    if (!sessiz) yerlestir(liste, yukleniyor());
     try {
       const { sayfa, ...filtre } = durum;
       const veri = await api(`/panel/randevu${sorgu({ ...filtre, limit: LIMIT, sayfa })}`);
@@ -99,6 +99,7 @@ export async function goster(kok, { baglam }) {
     mesaj,
     h('div', { class: 'kart' }, liste));
   yukle();
+  baglam.otomatikYenile(() => yukle(true));
 }
 
 /** Tarayıcı saatine göre şimdi 'YYYY-MM-DDTHH:MM' (randevu saatleriyle karşılaştırmak için). */

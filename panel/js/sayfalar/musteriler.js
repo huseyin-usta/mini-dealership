@@ -6,12 +6,12 @@ import { h, yerlestir, bicim, rozet, tablo, sayfalama, alan, uyari, yukleniyor }
 
 const LIMIT = 50;
 
-export async function goster(kok, { parametre }) {
+export async function goster(kok, { parametre, baglam }) {
   if (parametre) return detay(kok, parametre);
-  return liste(kok);
+  return liste(kok, baglam);
 }
 
-async function liste(kok) {
+async function liste(kok, baglam) {
   const durum = { ara: '', sayfa: 1 };
   const sonuc = h('div');
   const ara = h('input', { type: 'search', placeholder: 'Telefon (+90…) veya ad soyad', maxlength: 64, size: 32 });
@@ -21,8 +21,8 @@ async function liste(kok) {
     zamanlayici = setTimeout(() => { durum.ara = ara.value.trim(); durum.sayfa = 1; yukle(); }, 300);
   });
 
-  async function yukle() {
-    yerlestir(sonuc, yukleniyor());
+  async function yukle(sessiz = false) {
+    if (!sessiz) yerlestir(sonuc, yukleniyor());
     try {
       const v = await api(`/panel/musteri${sorgu({ ara: durum.ara, limit: LIMIT, sayfa: durum.sayfa })}`);
       yerlestir(sonuc,
@@ -46,6 +46,7 @@ async function liste(kok) {
 
   yerlestir(kok, h('h1', {}, 'Müşteriler'), h('div', { class: 'filtre' }, alan('Ara', ara)), h('div', { class: 'kart' }, sonuc));
   yukle();
+  baglam.otomatikYenile(() => yukle(true));
 }
 
 async function detay(kok, id) {

@@ -48,8 +48,8 @@ public final class MesajHandler extends BotHandler {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int AZAMI_METIN = 4000;
     private static final int GECMIS_ADET = 20;
-    private static final int AZAMI_TUR = 4;
-    private static final int AZAMI_ARAC_CAGRISI = 10;
+    private static final int AZAMI_TUR = 8;
+    private static final int AZAMI_ARAC_CAGRISI = 20;
     /**
      * LLM döngüsünün toplam süre bütçesi. Bağlantı ve HTTP thread'i bu süre
      * boyunca meşgul kalır; sınırsız bırakmak havuzu tıkar.
@@ -183,6 +183,8 @@ public final class MesajHandler extends BotHandler {
                     if (++cagriSayisi > AZAMI_ARAC_CAGRISI) {
                         throw new IOException("Araç çağrısı bütçesi aşıldı");
                     }
+                    LOG.info("LLM araç çağrısı: {} (tur {}, toplam {})",
+                            cagri.ad(), tur + 1, cagriSayisi);
                     String govde = araclar.calistir(cagri.ad(), cagri.args(), telefon);
                     fnParcalari.add(Map.of("functionResponse", Map.of(
                             "name", cagri.ad(),
@@ -200,6 +202,22 @@ public final class MesajHandler extends BotHandler {
             LOG.warn("LLM turu başarısız: {} — {}", e.getClass().getSimpleName(), e.getMessage());
             throw ApiHatasi.goster("LLM_UNAVAILABLE",
                     "Şu an yanıt veremiyorum, birazdan tekrar deneyin.", 503, null);
+        }
+
+        if (cevap == null || cevap.isBlank()) {
+            // Tur bütçesi doldu: araç çağrısı yapmadan kısa bir özet iste.
+            // Müşteri 503 yerine ne olduğunu/ne kaldığını öğrensin.
+            try {
+                LlmIstemci.Yanit ozet = gemini.uret(
+                        sistemPromptu() + "\n\nAraç çağrısı yapma. Yukarıdaki araç "
+                                + "sonuçlarına göre müşteriye kısa bir özet yaz; "
+                                + "yapılan işlemi ve varsa eksik adımı belirt.",
+                        icerik, List.of());
+                cevap = ozet.metin();
+            } catch (IOException | InterruptedException e) {
+                if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+                LOG.warn("LLM özet turu başarısız: {} — {}", e.getClass().getSimpleName(), e.getMessage());
+            }
         }
 
         if (cevap == null || cevap.isBlank()) {
