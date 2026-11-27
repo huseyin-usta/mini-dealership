@@ -226,9 +226,9 @@ Detayda ayrıca `sahip` (satılmışsa `musteri_id, ad_soyad, telefon`, değilse
 - stok hareketleri (zaman sırasıyla)
 - servis kayıtları özeti (`v_servis_durumu`)
 
-> Not: `v_arac_garanti_durumu` tek araç için ~135 ms sürüyor
-> (`docs/analiz/indeks-analizi.md` §7). Panel için kabul edilebilir; view
-> düzeltilirse bu uç kendiliğinden hızlanır.
+> Not: `v_arac_garanti_durumu` tek araç için ~4 ms sürer; view'daki CTE'ler
+> `NOT MATERIALIZED` yapılmadan önce ~135 ms sürüyordu
+> (`docs/analiz/indeks-analizi.md` §7).
 
 ## 7. Servis kayıtları
 
