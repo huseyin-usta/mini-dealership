@@ -127,7 +127,9 @@ Para: tam sayı TL.
 Açılır listeler için tek seferde: `subeler` (`sube_id, sehir, ad`), `turler`
 (`tur_kodu, ad, sure_dakika, departman, arac_gerekli`), `calisanlar` (yalnızca
 aktif; `calisan_id, ad, soyad, sube_id, departman, yetkinlikler` — süresi
-dolmamış yetkinlik kodları), `modeller` (`model_id, ad`). Panel girişte bir kez
+dolmamış yetkinlik kodları), `modeller` (`model_id, ad`), `tur_saatleri`
+(`tur_kodu, gun, baslangic, bitis` — türün verilebildiği saat aralıkları;
+`gun` 1 = Pazartesi … 7 = Pazar, saatler `HH:MM`). Panel girişte bir kez
 çeker. Şifre hash'i hiçbir zaman dönmez.
 
 ## 3. `GET /panel/randevu` — Bugünkü randevular
