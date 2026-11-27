@@ -255,11 +255,11 @@ Sonuçlar ve planlar [olcum/](olcum/olcum.md) altına yazılır.
   değişkeni (`app.musteri_telefon`) gerektiriyor. Bu sorgunun davranışı
   `scripts/test-db.sh` ile test ediliyor.
 
-## 7. Açık bulgu: `v_arac_garanti_durumu` filtreyi içeri almıyor
+## 7. Bulgu ve çözüm: `v_arac_garanti_durumu` filtreyi içeri almıyordu
 
 Panelin araç detay ekranında tek bir aracın garanti durumu
-`SELECT * FROM v_arac_garanti_durumu WHERE vin = ...` sorgusuyla okunacak.
-İndeksler uygulandıktan sonra bile bu sorgu ~134 ms sürüyor; indekssiz
+`SELECT * FROM v_arac_garanti_durumu WHERE vin = ...` sorgusuyla okunuyor.
+İndeksler uygulandıktan sonra bile bu sorgu ~134 ms sürüyordu; indekssiz
 hali ~141 ms.
 
 **Neden:** View'daki CTE'ler (`satis`, `gecerli_servis`) birden fazla yerde
@@ -270,8 +270,31 @@ araç sorulsa bile **tüm araçların** satış ve servis geçmişi hesaplanıyo
 sorguda hiç kullanılmıyor. Aynı view'ı kullanan Sorgu 6 ve 7'nin
 (~370–470 ms) maliyetinin büyük kısmı da buradan geliyor.
 
-**Önerilen çözüm:** View'ı, aracın satır kaynağından başlayıp satış ve
-servis bilgisini `LATERAL` alt sorgularla araç başına çeken bir yapıya
-dönüştürmek. Böylece `vin` filtresi indekse iner. Bu bir view değişikliği
-olduğu için `scripts/test-db.sh`'teki garanti senaryolarıyla birlikte ayrı
-bir iş olarak ele alınmalı.
+**Denenen iki çözüm.** Aynı sentetik veride (7.462 satılmış araç; en çok
+servis geçmişi olan araç `KMHI1000000000673`) PG 17, JIT kapalı, 7 tekrarın
+medyanı:
+
+| Sürüm | Tek araç (`WHERE vin = …`) | Tüm araçlar |
+|---|---:|---:|
+| Eski: CTE'ler materialize | 168 ms | 462 ms |
+| A: araç başına `LATERAL` alt sorgular | 4,1 ms | 2.581 ms |
+| **B: CTE'ler `NOT MATERIALIZED`** (seçilen) | **4,1 ms** | **568 ms** |
+
+- **A** tek araçta hızlı, ama tüm araçlar istendiğinde her araç için ayrı
+  indeks taraması yaptığı için 5,5 kat yavaşladı. Bu yol, view'ı tüm
+  araçlar üzerinden kullanan analitik Sorgu 6 ve 7'yi yavaşlatırdı.
+- **B**'de mantık aynen kaldı; yalnızca iki CTE'ye `NOT MATERIALIZED`
+  eklendi. CTE'ler sorgunun içine katılınca planlayıcı `vin` eşitliğini
+  `GROUP BY arac_vin` ve `PARTITION BY arac_vin` üzerinden içeri taşıyabiliyor.
+  Tek araç planında `CTE Scan` ve `Seq Scan on randevu` kalktı; yerlerine
+  `idx_stok_hareketi_arac_zaman` ve `arac_vin` üzerindeki randevu indeksi
+  kullanılıyor (1 satırlık okuma). Tüm araçlar sorgusu ~%20 yavaşladı, çünkü
+  `satis` iki yerde ayrı ayrı hesaplanıyor; panelin sorduğu tek araç
+  sorgusu ise ~40 kat hızlandı.
+
+**Doğruluk:** Eski ve yeni view'ın sonuç kümeleri aynı veride `EXCEPT ALL`
+ile iki yönlü karşılaştırıldı: fark 0 satır (garanti durumu dağılımı:
+GECERLI 4.564, SURE_DOLDU 2.654, BAKIM_AKSATILDI 244).
+`scripts/test-db.sh`'teki garanti senaryoları ve panel HTTP testleri
+(araç detayı bu view'ı kullanır) değişiklikten sonra da geçiyor. Bot
+kodu bu view'ı kullanmaz.
