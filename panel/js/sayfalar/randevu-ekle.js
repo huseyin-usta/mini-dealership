@@ -41,6 +41,7 @@ export async function goster(kok, { parametre, baglam }) {
   const aracAlani = alan('Araç', arac);
   const tarih = h('input', { type: 'date', name: 'tarih', value: bugun(1), min: bugun(), required: true });
   const saat = h('input', { type: 'time', name: 'saat', value: '10:00', step: 1800, required: true });
+  const saatler = h('div', { class: 'saatler tam', 'aria-live': 'polite' });
   const notlar = h('textarea', { name: 'notlar', maxlength: 1000 });
   const dugme = h('button', { class: 'ana', type: 'submit' }, 'Randevu oluştur');
 
@@ -113,9 +114,64 @@ export async function goster(kok, { parametre, baglam }) {
     } catch { /* bilgi amaçlı; gönderimde DB karar verir */ }
   }
 
+  // Boş saatler: türün o günkü saat aralıkları, tür süresi adımında değil
+  // 30 dakikalık adımlarla; çalışanın iptal edilmemiş randevularıyla çakışanlar
+  // ve geçmiş saatler kapalı. Son karar yine DB'de (müşteri/araç çakışması dahil).
+  let saatIstegi = 0;
+  async function saatleriGoster() {
+    const t = secTur();
+    const istek = ++saatIstegi;
+    if (!t || !calisan.value || !tarih.value) {
+      yerlestir(saatler, h('span', { class: 'soluk' }, 'Tür, çalışan ve gün seçilince boş saatler burada görünür.'));
+      return;
+    }
+    const gun = isoGun(tarih.value);
+    const araliklar = (katalog.tur_saatleri || []).filter((a) => a.tur_kodu === t.tur_kodu && a.gun === gun);
+    if (araliklar.length === 0) {
+      yerlestir(saatler, h('span', { class: 'soluk' }, `${t.ad} bu gün verilmiyor.`));
+      return;
+    }
+    yerlestir(saatler, h('span', { class: 'soluk' }, 'Boş saatler yükleniyor…'));
+    let dolu;
+    try {
+      const v = await api(`/panel/randevu${sorgu({ tarih: tarih.value, sube_id: sube.value, calisan_id: calisan.value, limit: 200 })}`);
+      dolu = v.randevular.filter((r) => r.durum !== 'IPTAL')
+        .map((r) => [dakika(r.baslangic.slice(11)), dakika(r.bitis.slice(11))]);
+    } catch {
+      if (istek === saatIstegi) yerlestir(saatler, h('span', { class: 'soluk' }, 'Boş saatler alınamadı; saati elle girin.'));
+      return;
+    }
+    if (istek !== saatIstegi) return;   // bu arada seçim değişti
+    const simdiDk = tarih.value === bugun() ? dakika(new Date().toTimeString().slice(0, 5)) : -1;
+    const dugmeler = [];
+    for (const a of araliklar) {
+      for (let b = dakika(a.baslangic); b + t.sure_dakika <= dakika(a.bitis); b += 30) {
+        const s = b + t.sure_dakika;
+        const cakisan = dolu.some(([db, ds]) => b < ds && s > db);
+        const gecmis = b <= simdiDk;
+        const hhmm = saatMetni(b);
+        dugmeler.push(h('button', {
+          type: 'button',
+          class: `kucuk${saat.value === hhmm ? ' secili' : ''}`,
+          disabled: cakisan || gecmis,
+          title: cakisan ? 'Çalışan bu saatte dolu' : gecmis ? 'Geçmiş saat' : `${hhmm}–${saatMetni(s)}`,
+          'aria-pressed': String(saat.value === hhmm),
+          onclick: () => { saat.value = hhmm; saatleriGoster(); },
+        }, hhmm));
+      }
+    }
+    const bos = dugmeler.filter((d) => !d.disabled).length;
+    yerlestir(saatler,
+      h('div', { class: 'soluk' }, bos ? `Boş saatler (${bos}) — seçmek için tıklayın:` : 'Bu gün çalışanın boş saati yok.'),
+      h('div', { class: 'dugmeler' }, dugmeler));
+  }
+
   telefon.addEventListener('change', musteriKontrol);
-  sube.addEventListener('change', () => { calisanlariDoldur(); araclariDoldur(); });
-  tur.addEventListener('change', () => { calisanlariDoldur(); araclariDoldur(); });
+  sube.addEventListener('change', () => { calisanlariDoldur(); araclariDoldur(); saatleriGoster(); });
+  tur.addEventListener('change', () => { calisanlariDoldur(); araclariDoldur(); saatleriGoster(); });
+  calisan.addEventListener('change', saatleriGoster);
+  tarih.addEventListener('change', saatleriGoster);
+  saat.addEventListener('change', saatleriGoster);
   function oncedenDoldur() {
     if (!onceden) return;
     telefon.value = onceden.telefon;
@@ -127,11 +183,12 @@ export async function goster(kok, { parametre, baglam }) {
   calisanlariDoldur();
   araclariDoldur();
   oncedenDoldur();
+  saatleriGoster();
 
   const form = h('form', { class: 'form', onsubmit: gonder },
     alan('Telefon', telefon), alan('Ad', ad), alan('Soyad', soyad), musteriBilgi,
     alan('Şube', sube), alan('Randevu türü', tur), alan('Çalışan', calisan), aracAlani,
-    alan('Gün', tarih), alan('Saat', saat),
+    alan('Gün', tarih), alan('Saat', saat), saatler,
     alan('Not', notlar, { sinif: 'tam' }),
     h('div', { class: 'dugmeler tam' }, dugme));
 
@@ -169,9 +226,11 @@ export async function goster(kok, { parametre, baglam }) {
       calisanlariDoldur();
       araclariDoldur();
       oncedenDoldur();   // aynı müşteriye bir randevu daha verilebilsin
+      saatleriGoster();
     } catch (err) {
       const ek = err.detay?.sebep && CAKISMA[err.detay.sebep];
       yerlestir(mesaj, uyari('hata', ek || err.message));
+      if (err.detay?.sebep) saatleriGoster();   // çakışma: tabloyu tazele
     } finally {
       dugme.disabled = false;
       mesaj.scrollIntoView({ block: 'nearest' });
@@ -183,4 +242,20 @@ export async function goster(kok, { parametre, baglam }) {
     h('p', { class: 'soluk' }, 'Şubeye gelen ya da telefonla arayan müşteri için. Mesai, tür saatleri ve çakışmalar kayıtta denetlenir.'),
     mesaj,
     h('div', { class: 'kart' }, form));
+}
+
+/** 'HH:MM' → gün içindeki dakika. */
+function dakika(hhmm) {
+  const [s, d] = hhmm.split(':').map(Number);
+  return s * 60 + d;
+}
+
+function saatMetni(dk) {
+  return `${String(Math.floor(dk / 60)).padStart(2, '0')}:${String(dk % 60).padStart(2, '0')}`;
+}
+
+/** 'YYYY-MM-DD' → ISO gün (1 = Pazartesi … 7 = Pazar), tur_saat ile aynı. */
+function isoGun(tarih) {
+  const [y, a, g] = tarih.split('-').map(Number);
+  return new Date(y, a - 1, g).getDay() || 7;
 }

@@ -72,6 +72,11 @@ button.kucuk { padding: .2rem .55rem; font-size: .85rem; }
 .form { display: grid; gap: .9rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .form .tam { grid-column: 1 / -1; }
 .dugmeler { display: flex; gap: .5rem; flex-wrap: wrap; }
+.saatler { display: grid; gap: .4rem; font-size: .85rem; }
+.saatler .dugmeler { gap: .35rem; }
+.saatler button { font-variant-numeric: tabular-nums; min-width: 4.2rem; }
+.saatler button.secili { background: var(--ana); border-color: var(--ana); color: #fff; }
+.saatler button:disabled { text-decoration: line-through; opacity: .45; }
 
 /* ---- Tablo -------------------------------------------------------------- */
 .tablo-kap { overflow-x: auto; }
