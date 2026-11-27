@@ -10,6 +10,7 @@ PW=$(openssl rand -hex 12)
 CONTAINER=md-test-tmp
 
 echo "==> PostgreSQL 17 test konteyneri başlatılıyor..."
+docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 docker run --rm -d --name "$CONTAINER" -e POSTGRES_PASSWORD="$PW" -p 127.0.0.1:5435:5432 postgres:17-alpine >/dev/null
 trap 'docker rm -f "$CONTAINER" >/dev/null 2>&1' EXIT
 
@@ -76,7 +77,8 @@ INSERT INTO randevu_turu (tur_kodu, ad, sure_dakika, departman, yetkinlik_id)
 VALUES ('TEST_SURUSU', 'Test Surusu', 60, 'SATIS', 1),
        ('TESLIMAT', 'Yeni Arac Teslimi', 60, 'SATIS', NULL),
        ('PERIYODIK_BAKIM', 'Periyodik Bakim', 60, 'SERVIS', NULL),
-       ('SERVIS_GIRIS', 'Servise Giris', 30, 'SERVIS', NULL);
+       ('SERVIS_GIRIS', 'Servise Giris', 30, 'SERVIS', NULL),
+       ('SERVIS_TESLIM', 'Servisten Teslim', 30, 'SERVIS', NULL);
 
 INSERT INTO tur_saat (tur_kodu, gun, baslangic, bitis)
 SELECT 'TEST_SURUSU', g::smallint, '10:00'::time, '12:00'::time FROM generate_series(1, 6) g
@@ -85,7 +87,9 @@ SELECT 'TESLIMAT', g::smallint, '14:00'::time, '16:00'::time FROM generate_serie
 UNION ALL
 SELECT 'PERIYODIK_BAKIM', g::smallint, '09:00'::time, '17:00'::time FROM generate_series(1, 6) g
 UNION ALL
-SELECT 'SERVIS_GIRIS', g::smallint, '09:00'::time, '17:00'::time FROM generate_series(1, 6) g;
+SELECT 'SERVIS_GIRIS', g::smallint, '09:00'::time, '17:00'::time FROM generate_series(1, 6) g
+UNION ALL
+SELECT 'SERVIS_TESLIM', g::smallint, '09:00'::time, '17:00'::time FROM generate_series(1, 6) g;
 
 \set QUIET 0
 
@@ -801,6 +805,60 @@ BEGIN
   RESET ROLE;
   RESET app.musteri_telefon;
   RAISE NOTICE '  [PASS] Test 23: v_musteri_servis_durumu musteriyi izole ediyor (fail-closed, masrafsiz)';
+END $$;
+
+-- TEST 24: Randevu-araç sahipliği (db/460). Deferred constraint trigger'ı
+-- bu transaction'da IMMEDIATE yapıp hataları yakalıyoruz.
+DO $$
+DECLARE
+  v_id integer;
+  v_sk integer;
+BEGIN
+  SET CONSTRAINTS trg_randevu_sahiplik IMMEDIATE;
+
+  -- (a) Baska musterinin araciyla servis randevusu reddedilir
+  BEGIN
+    INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin,
+                         baslangic, bitis, durum, kaynak)
+    VALUES (2, 1, 'SERVIS_GIRIS', 2, 'VIN33333333333333',
+            timestamp '2031-01-06 09:00', timestamp '2031-01-06 09:30', 'PLANLANDI', 'PANEL');
+    RAISE EXCEPTION 'TEST 24 BASARISIZ: sahiplik ihlali kabul edildi';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM LIKE 'TEST 24%' THEN RAISE; END IF;
+  END;
+
+  -- (b) Acik/TESLIME HAZIR servis kaydi yokken SERVIS_TESLIM reddedilir
+  BEGIN
+    INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin,
+                         baslangic, bitis, durum, kaynak)
+    VALUES (1, 1, 'SERVIS_TESLIM', 2, 'VIN33333333333333',
+            timestamp '2031-01-06 10:00', timestamp '2031-01-06 10:30', 'PLANLANDI', 'PANEL');
+    RAISE EXCEPTION 'TEST 24 BASARISIZ: hazir olmayan servis teslime acildi';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM LIKE 'TEST 24%' THEN RAISE; END IF;
+  END;
+
+  -- (c) Hazir servis kaydiyla SERVIS_TESLIM kabul edilir
+  INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin,
+                       baslangic, bitis, durum, kaynak)
+  VALUES (1, 1, 'SERVIS_GIRIS', 2, 'VIN33333333333333',
+          timestamp '2031-01-07 09:00', timestamp '2031-01-07 09:30', 'PLANLANDI', 'PANEL')
+  RETURNING randevu_id INTO v_id;
+  INSERT INTO servis_kaydi (acilis_randevu_id, sorumlu_calisan_id, sebep, giris_kilometresi)
+  VALUES (v_id, 2, 'BAKIM', 20000) RETURNING servis_kaydi_id INTO v_sk;
+  INSERT INTO servis_durum_gecmisi (servis_kaydi_id, durum)
+  VALUES (v_sk, 'TESLIME_HAZIR');
+  INSERT INTO randevu (musteri_id, sube_id, tur_kodu, calisan_id, arac_vin,
+                       baslangic, bitis, durum, kaynak)
+  VALUES (1, 1, 'SERVIS_TESLIM', 2, 'VIN33333333333333',
+          timestamp '2031-01-07 10:00', timestamp '2031-01-07 10:30', 'PLANLANDI', 'PANEL');
+
+  -- (d) Yalniz durum guncellemesi yeniden dogrulanmaz (arac sonradan satilabilir)
+  UPDATE arac SET musteri_id = 2 WHERE vin = 'VIN33333333333333';
+  UPDATE randevu SET durum = 'IPTAL' WHERE randevu_id = v_id;
+  UPDATE arac SET musteri_id = 1 WHERE vin = 'VIN33333333333333';
+
+  RAISE NOTICE '  [PASS] Test 24: randevu-arac sahipligi ve servis hazirligi DB''de dogrulaniyor';
 END $$;
 
 EOF
