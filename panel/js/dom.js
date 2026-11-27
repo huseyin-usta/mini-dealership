@@ -156,30 +156,40 @@ export function secim(ad, secenekler, secili, { bos } = {}) {
     secenekler.map(([d, a]) => h('option', { value: d, selected: String(d) === String(secili ?? '') }, a)));
 }
 
+/** Metni panoya kopyalar; Clipboard API yoksa ya da izin verilmezse seçip kopyalar. */
+async function panoyaKopyala(metin) {
+  try {
+    await navigator.clipboard.writeText(metin);
+    return true;
+  } catch {
+    const ta = h('textarea', { readonly: true, 'aria-hidden': 'true', class: 'pano-yedek' });
+    ta.value = metin;
+    document.body.append(ta);
+    ta.select();
+    let tamam = false;
+    try { tamam = document.execCommand('copy'); } catch { /* desteklenmiyor */ }
+    ta.remove();
+    return tamam;
+  }
+}
+
 /**
  * Telefon: tıklanınca arar (tel:). `tam: true` yanına WhatsApp'ta açma
- * bağlantısı ve kopyalama düğmesi ekler (pano yalnızca güvenli bağlamda var).
+ * bağlantısı ve kopyalama düğmesi ekler.
  */
 export function telefon(tel, { tam = false } = {}) {
   if (!tel) return '—';
   const ara = h('a', { href: `tel:${tel}`, class: 'sayi', title: 'Ara' }, tel);
   if (!tam) return ara;
-  const kopyala = navigator.clipboard
-    ? h('button', {
-      type: 'button',
-      class: 'kucuk',
-      onclick: async (e) => {
-        const d = e.currentTarget;
-        try {
-          await navigator.clipboard.writeText(tel);
-          d.textContent = 'Kopyalandı';
-        } catch {
-          d.textContent = 'Kopyalanamadı';
-        }
-        setTimeout(() => { d.textContent = 'Kopyala'; }, 1500);
-      },
-    }, 'Kopyala')
-    : null;
+  const kopyala = h('button', {
+    type: 'button',
+    class: 'kucuk',
+    onclick: async (e) => {
+      const d = e.currentTarget;
+      d.textContent = (await panoyaKopyala(tel)) ? 'Kopyalandı' : 'Kopyalanamadı';
+      setTimeout(() => { d.textContent = 'Kopyala'; }, 1500);
+    },
+  }, 'Kopyala');
   return h('span', { class: 'telefon' }, ara,
     h('a', { href: `https://wa.me/${tel.replace(/\D/g, '')}`, target: '_blank', rel: 'noopener noreferrer',
       class: 'kucuk-bag' }, 'WhatsApp'),
