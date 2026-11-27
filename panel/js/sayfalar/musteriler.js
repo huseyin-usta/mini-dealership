@@ -3,6 +3,7 @@
 
 import { api, sorgu } from '../api.js';
 import { h, yerlestir, bicim, rozet, tablo, sayfalama, alan, uyari, yukleniyor } from '../dom.js';
+import { telefonGibiMi, telefonNormal } from '../telefon.js';
 
 const LIMIT = 50;
 
@@ -14,11 +15,17 @@ export async function goster(kok, { parametre, baglam }) {
 async function liste(kok, baglam) {
   const durum = { ara: '', sayfa: 1 };
   const sonuc = h('div');
-  const ara = h('input', { type: 'search', placeholder: 'Telefon (+90…) veya ad soyad', maxlength: 64, size: 32 });
+  const ara = h('input', { type: 'search', placeholder: 'Telefon (0532…) veya ad soyad', maxlength: 64, size: 32 });
   let zamanlayici;
   ara.addEventListener('input', () => {
     clearTimeout(zamanlayici);
-    zamanlayici = setTimeout(() => { durum.ara = ara.value.trim(); durum.sayfa = 1; yukle(); }, 300);
+    zamanlayici = setTimeout(() => {
+      // Telefon öneki yerel yazılabilir (0532… → +90532…); isim araması olduğu gibi gider.
+      const metin = ara.value.trim();
+      durum.ara = telefonGibiMi(metin) ? telefonNormal(metin) : metin;
+      durum.sayfa = 1;
+      yukle();
+    }, 300);
   });
 
   async function yukle(sessiz = false) {
