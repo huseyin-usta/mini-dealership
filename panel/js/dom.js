@@ -156,6 +156,36 @@ export function secim(ad, secenekler, secili, { bos } = {}) {
     secenekler.map(([d, a]) => h('option', { value: d, selected: String(d) === String(secili ?? '') }, a)));
 }
 
+/**
+ * Telefon: tıklanınca arar (tel:). `tam: true` yanına WhatsApp'ta açma
+ * bağlantısı ve kopyalama düğmesi ekler (pano yalnızca güvenli bağlamda var).
+ */
+export function telefon(tel, { tam = false } = {}) {
+  if (!tel) return '—';
+  const ara = h('a', { href: `tel:${tel}`, class: 'sayi', title: 'Ara' }, tel);
+  if (!tam) return ara;
+  const kopyala = navigator.clipboard
+    ? h('button', {
+      type: 'button',
+      class: 'kucuk',
+      onclick: async (e) => {
+        const d = e.currentTarget;
+        try {
+          await navigator.clipboard.writeText(tel);
+          d.textContent = 'Kopyalandı';
+        } catch {
+          d.textContent = 'Kopyalanamadı';
+        }
+        setTimeout(() => { d.textContent = 'Kopyala'; }, 1500);
+      },
+    }, 'Kopyala')
+    : null;
+  return h('span', { class: 'telefon' }, ara,
+    h('a', { href: `https://wa.me/${tel.replace(/\D/g, '')}`, target: '_blank', rel: 'noopener noreferrer',
+      class: 'kucuk-bag' }, 'WhatsApp'),
+    kopyala);
+}
+
 export function alan(etiket, girdi, { sinif } = {}) {
   return h('label', { class: sinif }, etiket, girdi);
 }
