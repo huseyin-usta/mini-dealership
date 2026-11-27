@@ -27,3 +27,7 @@ auth_info*/
 
 # İşletim sistemi
 .DS_Store
+
+# Rapor derleme çıktıları (kaynak .tex ve figürler takip edilir)
+docs/rapor/son-rapor.pdf
+docs/rapor/son-rapor-overleaf.zip
