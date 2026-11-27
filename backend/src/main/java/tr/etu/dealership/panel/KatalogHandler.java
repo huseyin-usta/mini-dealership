@@ -37,6 +37,15 @@ public final class KatalogHandler extends PanelHandler {
             ps.setArray(1, i.conn().createArrayOf("varchar", ARAC_GEREKEN_TURLER.toArray()));
             veri.put("turler", Satirlar.liste(ps));
         }
+        // Türlerin verilebildiği saat aralıkları (randevu trigger'ının denetlediği
+        // tur_saat); panel boş saatleri bunlardan önerir. gun: 1 = Pazartesi.
+        try (PreparedStatement ps = i.conn().prepareStatement("""
+                SELECT tur_kodu, gun, to_char(baslangic, 'HH24:MI') AS baslangic,
+                       to_char(bitis, 'HH24:MI') AS bitis
+                  FROM tur_saat
+                 ORDER BY tur_kodu, gun, baslangic""")) {
+            veri.put("tur_saatleri", Satirlar.liste(ps));
+        }
         try (PreparedStatement ps = i.conn().prepareStatement("""
                 SELECT c.calisan_id, c.ad, c.soyad, c.sube_id, c.departman,
                        coalesce(array_agg(y.kod ORDER BY y.kod)

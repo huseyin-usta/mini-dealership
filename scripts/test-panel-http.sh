@@ -341,6 +341,13 @@ bekle "Tür araç gerektirip gerektirmediğini taşır" 200 \
 bekle "Çalışan yetkinlikleriyle döner" 200 \
   '"calisan_id":1,"ad":"Ayşe","soyad":"Satıcı","sube_id":1,"departman":"SATIS","yetkinlikler":["TEST_SURUSU"]' \
   -H "$AUTH" "$TABAN/panel/katalog"
+bekle "Katalog tür saat aralıklarını taşır" 200 \
+  '"tur_saatleri":[{"tur_kodu":"ARAC_INCELEME","gun":1,"baslangic":"09:00","bitis":"17:00"}' \
+  -H "$AUTH" "$TABAN/panel/katalog"
+bekle "Tür saat aralığı her tür ve gün için döner" 200 \
+  '{"tur_kodu":"TEST_SURUSU","gun":6,"baslangic":"09:00","bitis":"17:00"}]' \
+  -H "$AUTH" "$TABAN/panel/katalog"
+yok "Pazar (mesai dışı) için tür saati yok" '"gun":7' -H "$AUTH" "$TABAN/panel/katalog"
 yok "Pasif çalışan katalogda yok" '"Eski"' -H "$AUTH" "$TABAN/panel/katalog"
 yok "Katalog şifre hash'i taşımaz" 'sifre' -H "$AUTH" "$TABAN/panel/katalog"
 bekle "Katalog modelleri listeler" 200 '"modeller":[{"model_id":1,"ad":"Ioniq 5"},{"model_id":2,"ad":"Tucson"}]' \
