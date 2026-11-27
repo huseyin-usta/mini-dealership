@@ -37,7 +37,9 @@ h2 { font-size: 1.05rem; margin: 0 0 .75rem; }
 .yan { background: #16273b; color: #cfd8e3; padding: 1rem .75rem; display: flex; flex-direction: column; gap: .25rem; }
 .marka { display: flex; align-items: center; gap: .6rem; color: #fff; font-weight: 600; padding: .25rem .5rem 1rem; }
 .marka img { width: 28px; height: 28px; }
-.yan a { color: #cfd8e3; padding: .55rem .75rem; border-radius: 6px; display: block; }
+.yan a { color: #cfd8e3; padding: .55rem .75rem; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.menu-rozet { min-width: 1.4rem; padding: .05rem .4rem; border-radius: 999px; background: rgba(255, 255, 255, .16); color: #fff; font-size: .75rem; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums; }
+.menu-rozet.kirmizi { background: var(--kirmizi); }
 .yan a:hover { background: rgba(255, 255, 255, .07); text-decoration: none; }
 .yan a.secili { background: var(--ana); color: #fff; }
 .yan .alt { margin-top: auto; font-size: .85rem; padding: .75rem .5rem 0; border-top: 1px solid rgba(255, 255, 255, .12); }

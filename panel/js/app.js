@@ -3,8 +3,8 @@
 // Rotalar: #/<sayfa>[/<parametre>]. Her sayfa ayrı bir modüldür ve
 // `goster(kok, { parametre, baglam })` dışa aktarır; ilk açılışta yüklenir.
 
-import { api, oturum, ApiHatasi } from './api.js';
-import { h, yerlestir, uyari, yukleniyor } from './dom.js';
+import { api, sorgu, oturum, ApiHatasi } from './api.js';
+import { h, yerlestir, uyari, yukleniyor, bugun } from './dom.js';
 
 // Menü sırası. [rota, başlık, modül]
 const MENU = [
@@ -67,6 +67,7 @@ async function cizdir() {
 
   const icerik = h('main', { class: 'icerik' }, yukleniyor());
   yerlestir(kok, h('div', { class: 'kabuk' }, yanMenu(o, vurgulu), icerik));
+  rozetleriGuncelle();
   document.title = `${(menu || MENU.find(([r]) => r === vurgulu))[1]} · Mini Bayi`;
 
   try {
@@ -91,12 +92,48 @@ async function cizdir() {
   }
 }
 
+// Menü rozetleri: çalışanın şubesinde bugün bekleyen randevular ve geciken
+// servis kayıtları. Sayfa değişince ve bir sayfa veri değiştirince
+// ('panel-degisti' olayı) tazelenir; hata olursa rozet sessizce gizlenir.
+const ROZETLER = {
+  randevular: { el: null, sinif: '', baslik: 'bugün bekleyen randevu' },
+  servis: { el: null, sinif: 'kirmizi', baslik: 'geciken servis kaydı' },
+};
+
+async function rozetleriGuncelle() {
+  const o = oturum.oku();
+  if (!o || !ROZETLER.randevular.el?.isConnected) return;
+  const sube = o.calisan.sube_id;
+  const say = async (yol, filtre) => (await api(`${yol}${sorgu({ ...filtre, limit: 1 })}`)).toplam;
+  const istekler = {
+    randevular: say('/panel/randevu', { tarih: bugun(), sube_id: sube, durum: 'PLANLANDI' }),
+    servis: say('/panel/servis', { sube_id: sube, acik: 'true', gecikti: 'true' }),
+  };
+  for (const [ad, istek] of Object.entries(istekler)) {
+    const r = ROZETLER[ad];
+    try {
+      const n = await istek;
+      r.el.textContent = n > 99 ? '99+' : String(n);
+      r.el.title = `${n} ${r.baslik}`;
+      r.el.hidden = n === 0;
+    } catch {
+      r.el.hidden = true;
+    }
+  }
+}
+window.addEventListener('panel-degisti', rozetleriGuncelle);
+setInterval(() => { if (!document.hidden) rozetleriGuncelle(); }, 60000);
+
 function yanMenu(o, vurgulu) {
   const c = o.calisan;
   return h('nav', { class: 'yan', 'aria-label': 'Ana menü' },
     h('div', { class: 'marka' }, h('img', { src: 'logo.svg', alt: '' }), 'Mini Bayi'),
-    MENU.map(([r, baslik]) => h('a', { href: `#/${r}`, class: r === vurgulu ? 'secili' : null,
-      'aria-current': r === vurgulu ? 'page' : null }, baslik)),
+    MENU.map(([r, baslik]) => {
+      const rz = ROZETLER[r];
+      if (rz) rz.el = h('span', { class: `menu-rozet ${rz.sinif}`, hidden: true });
+      return h('a', { href: `#/${r}`, class: r === vurgulu ? 'secili' : null,
+        'aria-current': r === vurgulu ? 'page' : null }, baslik, rz ? rz.el : null);
+    }),
     h('div', { class: 'alt' },
       h('div', {}, `${c.ad} ${c.soyad}`),
       h('div', { class: 'soluk' }, c.departman === 'SATIS' ? 'Satış' : 'Servis'),
