@@ -29,7 +29,7 @@ export async function goster(kok, { parametre, baglam }) {
 
   // Yerel yazım (0532 123 45 67) da kabul edilir; alan çıkışında +90… biçimine çevrilir.
   const telefon = h('input', { name: 'telefon', type: 'tel', placeholder: '0532 123 45 67', required: true,
-    pattern: '[+0-9 ().\\-]{7,24}', title: 'Telefon numarası (ör. 0532 123 45 67 ya da +44…)', autocomplete: 'off' });
+    pattern: '[0-9+ \\(\\)\\.\\-]{7,24}', title: 'Telefon numarası (ör. 0532 123 45 67 ya da +44…)', autocomplete: 'off' });
   const telefonDegeri = () => telefonNormal(telefon.value);
   const ad = h('input', { name: 'ad', maxlength: 64 });
   const soyad = h('input', { name: 'soyad', maxlength: 64 });
