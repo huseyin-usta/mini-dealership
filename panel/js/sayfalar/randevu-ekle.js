@@ -4,6 +4,7 @@
 
 import { api, sorgu } from '../api.js';
 import { h, yerlestir, alan, secim, uyari, bugun, bicim } from '../dom.js';
+import { E164, telefonNormal } from '../telefon.js';
 
 const CAKISMA = {
   CALISAN_DOLU: 'Seçilen çalışanın bu saatte başka randevusu var.',
@@ -26,8 +27,10 @@ export async function goster(kok, { parametre, baglam }) {
     }
   }
 
-  const telefon = h('input', { name: 'telefon', placeholder: '+905321234567', required: true,
-    pattern: '\\+[1-9][0-9]{7,14}', title: '+ ile başlayan uluslararası biçim', autocomplete: 'off' });
+  // Yerel yazım (0532 123 45 67) da kabul edilir; alan çıkışında +90… biçimine çevrilir.
+  const telefon = h('input', { name: 'telefon', type: 'tel', placeholder: '0532 123 45 67', required: true,
+    pattern: '[+0-9 ().\\-]{7,24}', title: 'Telefon numarası (ör. 0532 123 45 67 ya da +44…)', autocomplete: 'off' });
+  const telefonDegeri = () => telefonNormal(telefon.value);
   const ad = h('input', { name: 'ad', maxlength: 64 });
   const soyad = h('input', { name: 'soyad', maxlength: 64 });
   const musteriBilgi = h('div', { class: 'soluk tam' });
@@ -68,8 +71,8 @@ export async function goster(kok, { parametre, baglam }) {
       if (t.tur_kodu === 'TEST_SURUSU') {
         const v = await api(`/panel/arac${sorgu({ sube_id: sube.value, durum: 'STOKTA', limit: 200 })}`);
         secenekler = v.araclar;
-      } else if (/^\+[1-9]\d{7,14}$/.test(telefon.value.trim())) {
-        const m = await musteriBul(telefon.value.trim());
+      } else if (E164.test(telefonDegeri())) {
+        const m = await musteriBul(telefonDegeri());
         if (m) secenekler = (await api(`/panel/musteri/${m.musteri_id}`)).araclar;
       }
       yerlestir(arac, h('option', { value: '' }, secenekler.length ? 'Seçin' : 'Uygun araç yok'),
@@ -88,9 +91,13 @@ export async function goster(kok, { parametre, baglam }) {
   }
 
   async function musteriKontrol() {
-    const tel = telefon.value.trim();
+    const tel = telefonDegeri();
+    if (tel) telefon.value = tel;   // personel kaydedilecek biçimi görsün
     yerlestir(musteriBilgi);
-    if (!/^\+[1-9]\d{7,14}$/.test(tel)) return;
+    if (!E164.test(tel)) {
+      if (tel) yerlestir(musteriBilgi, 'Telefon numarası geçersiz.');
+      return;
+    }
     try {
       const m = await musteriBul(tel);
       if (m) {
@@ -131,9 +138,16 @@ export async function goster(kok, { parametre, baglam }) {
   async function gonder(e) {
     e.preventDefault();
     yerlestir(mesaj);
+    const tel = telefonDegeri();
+    if (!E164.test(tel)) {
+      yerlestir(mesaj, uyari('hata', 'Telefon numarası geçersiz.'));
+      telefon.focus();
+      return;
+    }
+    telefon.value = tel;
     dugme.disabled = true;
     const govde = {
-      telefon: telefon.value.trim(),
+      telefon: tel,
       sube_id: Number(sube.value),
       tur_kodu: tur.value,
       calisan_id: Number(calisan.value),
