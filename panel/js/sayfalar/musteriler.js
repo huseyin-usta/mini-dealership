@@ -2,7 +2,7 @@
 // ve bot konuşmaları (salt-okunur, eskiye doğru sayfalı).
 
 import { api, sorgu } from '../api.js';
-import { h, yerlestir, bicim, rozet, tablo, sayfalama, alan, uyari, yukleniyor } from '../dom.js';
+import { h, yerlestir, bicim, rozet, tablo, sayfalama, alan, uyari, yukleniyor, telefon } from '../dom.js';
 import { telefonGibiMi, telefonNormal } from '../telefon.js';
 
 const LIMIT = 50;
@@ -36,7 +36,7 @@ async function liste(kok, baglam) {
         tablo([
           { ad: 'Ad soyad', deger: (m) => h('a', { href: `#/musteri/${m.musteri_id}` },
             [m.ad, m.soyad].filter(Boolean).join(' ') || 'Adı bilinmiyor') },
-          { ad: 'Telefon', deger: (m) => m.telefon, sinif: 'sayi' },
+          { ad: 'Telefon', deger: (m) => telefon(m.telefon) },
           { ad: 'Kayıt', deger: (m) => bicim.tarih(m.kayit_zamani) },
           { ad: 'Son randevu', deger: (m) => m.son_randevu_zamani
             ? [bicim.zaman(m.son_randevu_zamani), ' · ', m.son_randevu_turu, ' ', rozet(m.son_randevu_durumu)]
@@ -97,7 +97,7 @@ async function detay(kok, id) {
     h('div', { class: 'izgara' },
       h('div', { class: 'kart' }, h('h2', {}, 'İletişim'),
         h('dl', { class: 'bilgi' },
-          h('dt', {}, 'Telefon'), h('dd', { class: 'sayi' }, m.telefon),
+          h('dt', {}, 'Telefon'), h('dd', {}, telefon(m.telefon, { tam: true })),
           h('dt', {}, 'Kayıt'), h('dd', {}, bicim.zaman(m.kayit_zamani))),
         h('p', {}, h('a', { href: `#/randevu-ekle/${m.musteri_id}` }, 'Bu müşteriye randevu ekle'))),
       h('div', { class: 'kart' }, h('h2', {}, 'Araçları'),

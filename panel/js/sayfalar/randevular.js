@@ -1,7 +1,7 @@
 // Bugünkü randevular: şube/gün/tür/durum filtresi, durum değiştirme.
 
 import { api, sorgu } from '../api.js';
-import { h, yerlestir, bicim, rozet, tablo, sayfalama, secim, alan, uyari, yukleniyor, bugun, ETIKET } from '../dom.js';
+import { h, yerlestir, bicim, rozet, tablo, sayfalama, secim, alan, uyari, yukleniyor, bugun, ETIKET, telefon } from '../dom.js';
 
 const LIMIT = 50;
 // Filtreler sekme boyunca hatırlanır (başka sayfaya gidip dönünce kaybolmasın).
@@ -91,7 +91,7 @@ export async function goster(kok, { baglam }) {
           { ad: 'Saat', deger: (r) => `${bicim.saat(r.baslangic)}–${bicim.saat(r.bitis)}`, sinif: 'sayi' },
           { ad: 'Tür', deger: (r) => r.tur_adi },
           { ad: 'Müşteri', deger: (r) => h('a', { href: `#/musteri/${r.musteri_id}` }, r.musteri || 'Adı bilinmiyor') },
-          { ad: 'Telefon', deger: (r) => r.telefon, sinif: 'sayi' },
+          { ad: 'Telefon', deger: (r) => telefon(r.telefon) },
           { ad: 'Çalışan', deger: (r) => r.calisan },
           { ad: 'Araç', deger: (r) => r.arac_vin
             ? h('a', { href: `#/arac/${r.arac_vin}` }, [r.model_adi, r.plaka].filter(Boolean).join(' · '))

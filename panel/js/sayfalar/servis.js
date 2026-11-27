@@ -2,7 +2,7 @@
 // masraflar) ve güncelleme (durum ekleme, işlem/masraf ekleme).
 
 import { api, sorgu } from '../api.js';
-import { h, yerlestir, bicim, rozet, tablo, sayfalama, secim, alan, uyari, yukleniyor, bugun, ETIKET } from '../dom.js';
+import { h, yerlestir, bicim, rozet, tablo, sayfalama, secim, alan, uyari, yukleniyor, bugun, ETIKET, telefon } from '../dom.js';
 
 const LIMIT = 50;
 const DURUMLAR = ['INCELENIYOR', 'PARCA_BEKLENIYOR', 'EKSPERTIZ_BEKLENIYOR', 'ISLEMDE', 'TESLIME_HAZIR', 'TAMAMLANDI'];
@@ -91,7 +91,7 @@ async function detay(kok, id) {
         h('div', { class: 'kart' }, h('h2', {}, 'Kayıt'),
           h('dl', { class: 'bilgi' },
             h('dt', {}, 'Araç'), h('dd', {}, h('a', { href: `#/arac/${s.arac_vin}` }, `${s.model_adi} · ${s.plaka || s.arac_vin}`)),
-            h('dt', {}, 'Müşteri'), h('dd', {}, h('a', { href: `#/musteri/${s.musteri_id}` }, s.musteri || 'Adı bilinmiyor'), ` · ${s.telefon}`),
+            h('dt', {}, 'Müşteri'), h('dd', {}, h('a', { href: `#/musteri/${s.musteri_id}` }, s.musteri || 'Adı bilinmiyor'), ' · ', telefon(s.telefon, { tam: true })),
             h('dt', {}, 'Sorumlu'), h('dd', {}, s.sorumlu_calisan),
             h('dt', {}, 'Giriş'), h('dd', {}, `${bicim.zaman(s.giris_zamani)} · ${bicim.sayi(s.giris_kilometresi)} km`),
             h('dt', {}, 'Şikâyet'), h('dd', {}, bicim.bos(s.sikayet_aciklama)),

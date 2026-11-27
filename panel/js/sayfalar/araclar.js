@@ -2,7 +2,7 @@
 // (özellikler, garanti durumu, stok hareketleri, servis geçmişi).
 
 import { api, sorgu } from '../api.js';
-import { h, yerlestir, bicim, rozet, tablo, sayfalama, secim, alan, uyari, yukleniyor, ETIKET } from '../dom.js';
+import { h, yerlestir, bicim, rozet, tablo, sayfalama, secim, alan, uyari, yukleniyor, ETIKET, telefon } from '../dom.js';
 
 const LIMIT = 50;
 
@@ -83,7 +83,7 @@ async function detay(kok, vin) {
           a.tahmini_varis_tarihi ? [h('dt', {}, 'Tahmini varış'), h('dd', {}, bicim.tarih(a.tahmini_varis_tarihi))] : null,
           h('dt', {}, 'Sahibi'),
           h('dd', {}, a.sahip
-            ? [h('a', { href: `#/musteri/${a.sahip.musteri_id}` }, a.sahip.ad_soyad || 'Adı bilinmiyor'), ` · ${a.sahip.telefon}`]
+            ? [h('a', { href: `#/musteri/${a.sahip.musteri_id}` }, a.sahip.ad_soyad || 'Adı bilinmiyor'), ' · ', telefon(a.sahip.telefon, { tam: true })]
             : '—'))),
       h('div', { class: 'kart' }, h('h2', {}, 'Garanti'),
         g ? h('dl', { class: 'bilgi' },
