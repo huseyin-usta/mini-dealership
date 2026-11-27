@@ -33,8 +33,9 @@ temizle() {
 }
 trap temizle EXIT INT TERM
 
-if [ ! -f veri/uretilen/yukle.sql ]; then
-  echo "==> Sentetik veri üretiliyor..."
+if [ ! -f veri/uretilen/yukle.sql ] \
+   || [ -n "$(find db -name '*.sql' -newer veri/uretilen/yukle.sql -print -quit)" ]; then
+  echo "==> Sentetik veri üretiliyor (şema değişmiş ya da veri yok)..."
   PY=python3; $PY -c '' 2>/dev/null || PY=python
   $PY veri/uret.py
 fi

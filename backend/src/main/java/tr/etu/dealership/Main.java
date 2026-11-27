@@ -46,6 +46,9 @@ public final class Main {
         }
 
         // Bind adresi env'den gelir; varsayılan yalnızca yerel arayüz (127.0.0.1).
+        // Yavaş gövde (slowloris): JDK HttpServer varsayılan olarak istek okumasını
+        // süresiz bekler. Panel girişi oturumsuz okunduğu için üst sınır koyulur.
+        System.setProperty("sun.net.httpserver.maxReqTime", "30");
         HttpServer sunucu = HttpServer.create(
                 new InetSocketAddress(ayarlar.bindAdresi(), ayarlar.httpPort()), 0);
         ExecutorService havuz = Executors.newFixedThreadPool(8);

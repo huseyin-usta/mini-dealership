@@ -29,13 +29,31 @@ public final class Oturumlar {
     static final int AZAMI_HATA = 5;
     static final Duration KILIT_SURESI = Duration.ofMinutes(1);
 
+    /**
+     * IP başına giriş denemesi sınırı. Kullanıcı adı kilidi tek başına yetmez:
+     * saldırgan her istekte farklı ad gönderirse her istekte bcrypt çalışır.
+     * Testler tek IP'den ~20 giriş yapar; sınır onların üstünde tutuldu.
+     */
+    static final int IP_AZAMI = 60;
+    static final Duration IP_PENCERE = Duration.ofMinutes(1);
+
+    /** Terk edilmiş sayaç kayıtları bu süre sonra silinir (bellek sınırsız büyümesin). */
+    static final Duration TEMIZLIK_SURESI = Duration.ofHours(1);
+
+    /** IP sayaç haritasının üst sınırı: aşılırsa süresi dolanlar temizlenir. */
+    private static final int IP_HARITA_TAVANI = 10_000;
+
     private final SecureRandom rastgele = new SecureRandom();
     private final Map<String, Oturum> oturumlar = new ConcurrentHashMap<>();
     private final Map<String, Deneme> denemeler = new ConcurrentHashMap<>();
+    private final Map<String, IpDeneme> ipDenemeler = new ConcurrentHashMap<>();
     private final Duration sure;
     private final Clock saat;
 
-    private record Deneme(int hata, Instant kilitBitis) {
+    private record Deneme(int hata, Instant kilitBitis, Instant sonDeneme) {
+    }
+
+    private record IpDeneme(int sayi, Instant pencereBaslangic) {
     }
 
     public Oturumlar(Duration sure) {
@@ -84,11 +102,29 @@ public final class Oturumlar {
     /** Hatalı giriş: sayacı artırır, sınırda kilitler. */
     public void hataliGiris(String kullaniciAdi) {
         Instant simdi = saat.instant();
+        // Terk edilmiş sayaçları at: rastgele adlarla sınırsız kayıt birikemez.
+        denemeler.values().removeIf(d -> d.sonDeneme().plus(TEMIZLIK_SURESI).isBefore(simdi));
         denemeler.compute(kullaniciAdi, (k, d) -> {
             int hata = (d == null || (d.kilitBitis() != null && !d.kilitBitis().isAfter(simdi)))
                     ? 1 : d.hata() + 1;
-            return new Deneme(hata, hata >= AZAMI_HATA ? simdi.plus(KILIT_SURESI) : null);
+            return new Deneme(hata, hata >= AZAMI_HATA ? simdi.plus(KILIT_SURESI) : null, simdi);
         });
+    }
+
+    /**
+     * IP başına pencere sınırı. Kullanıcı adı ne olursa olsun, tek IP'den
+     * dakikada {@value #IP_AZAMI} giriş denemesinden fazlası bcrypt'e ulaşmaz.
+     */
+    public boolean ipIzinli(String ip) {
+        Instant simdi = saat.instant();
+        IpDeneme d = ipDenemeler.compute(ip == null ? "?" : ip, (k, v) ->
+                v == null || !v.pencereBaslangic().plus(IP_PENCERE).isAfter(simdi)
+                        ? new IpDeneme(1, simdi)
+                        : new IpDeneme(v.sayi() + 1, v.pencereBaslangic()));
+        if (ipDenemeler.size() > IP_HARITA_TAVANI) {
+            ipDenemeler.values().removeIf(v -> !v.pencereBaslangic().plus(IP_PENCERE).isAfter(simdi));
+        }
+        return d.sayi() <= IP_AZAMI;
     }
 
     /** Başarılı giriş sayacı sıfırlar. */

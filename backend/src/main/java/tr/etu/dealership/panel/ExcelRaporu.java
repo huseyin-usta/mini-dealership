@@ -81,12 +81,19 @@ final class ExcelRaporu {
         }
         try (PreparedStatement ps = c.prepareStatement("SELECT " + kolonlar
                 + " FROM v_rapor_randevu r WHERE" + RaporPanelHandler.Aralik.KOSUL
-                + " ORDER BY r.baslangic, r.randevu_id")) {
+                + " ORDER BY r.baslangic, r.randevu_id LIMIT "
+                + (RaporPanelHandler.AZAMI_SATIR + 1))) {
             a.bagla(ps, 1);
             ps.setFetchSize(1000);   // satırlar akışla gelir, hepsi belleğe alınmaz
             try (ResultSet rs = ps.executeQuery()) {
                 int satir = 1;
                 while (rs.next()) {
+                    // count ile select arasında satır eklenirse sınırı burada da uygula.
+                    if (satir > RaporPanelHandler.AZAMI_SATIR) {
+                        throw ApiHatasi.goster("ARALIK_COK_GENIS",
+                                "Rapor en fazla " + RaporPanelHandler.AZAMI_SATIR
+                                        + " randevu içerebilir; aralığı daraltın.", 400, null);
+                    }
                     for (int k = 0; k < SUTUNLAR.length; k++) {
                         Object v = rs.getObject(k + 1);
                         if (v == null) continue;

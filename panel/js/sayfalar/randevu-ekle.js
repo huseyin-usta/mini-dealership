@@ -70,8 +70,9 @@ export async function goster(kok, { baglam }) {
   }
 
   async function musteriBul(tel) {
-    const v = await api(`/panel/musteri${sorgu({ ara: tel, limit: 1 })}`);
-    return v.musteriler.find((m) => m.telefon === tel) || null;
+    // Tam eşleşme: benzer numaralı müşteri "kayıtlı" sanılmasın.
+    const v = await api(`/panel/musteri${sorgu({ telefon: tel })}`);
+    return v.musteriler[0] || null;
   }
 
   async function musteriKontrol() {

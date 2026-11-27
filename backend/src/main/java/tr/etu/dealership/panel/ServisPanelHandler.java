@@ -50,14 +50,18 @@ public final class ServisPanelHandler extends PanelHandler {
     // ---- §7 Listeleme ve detay -----------------------------------------------------
 
     private Object listele(Istek i) throws Exception {
-        i.yalnizca(Set.of("sube_id", "acik", "gecikti", "ara", "limit", "sayfa"));
+        i.yalnizca(Set.of("sube_id", "acik", "gecikti", "ara", "limit", "sayfa", "tumu"));
         String ara = i.metinParam("ara");
         if (ara != null) {
             ara = ara.toUpperCase(Locale.ROOT).replace(" ", "");
             if (ara.length() > 17) throw Istek.gecersiz("ara en fazla 17 karakter olabilir.");
         }
+        boolean tumu = Boolean.TRUE.equals(i.evetHayirParam("tumu"));
         Integer subeId = i.sayiParam("sube_id");
-        if (subeId == null && ara == null) subeId = i.oturum().subeId();
+        if (tumu && subeId != null) {
+            throw Istek.gecersiz("sube_id ile tumu birlikte gönderilemez.");
+        }
+        if (!tumu && subeId == null && ara == null) subeId = i.oturum().subeId();
         Boolean acik = i.evetHayirParam("acik");
         Boolean gecikti = i.evetHayirParam("gecikti");
         int limit = i.limit();

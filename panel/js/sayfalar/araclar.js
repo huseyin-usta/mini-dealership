@@ -12,7 +12,7 @@ export async function goster(kok, { parametre, baglam }) {
 }
 
 async function liste(kok, { katalog, oturum }) {
-  const durum = { sube_id: String(oturum.calisan.sube_id), durum: '', model_id: '', ara: '', sayfa: 1 };
+  const durum = { sube_id: String(oturum.calisan.sube_id), durum: '', model_id: '', ara: '', tumu: '', sayfa: 1 };
   const sonuc = h('div');
   const ara = h('input', { type: 'search', placeholder: 'VIN veya plaka', maxlength: 17 });
   const sube = secim('sube_id', katalog.subeler.map((s) => [s.sube_id, `${s.sehir} – ${s.ad}`]), durum.sube_id, { bos: 'Tüm şubeler' });
@@ -20,7 +20,7 @@ async function liste(kok, { katalog, oturum }) {
   const model = secim('model_id', katalog.modeller.map((m) => [m.model_id, m.ad]), '', { bos: 'Tümü' });
 
   const oku = () => {
-    Object.assign(durum, { sube_id: sube.value, durum: drm.value, model_id: model.value, ara: ara.value.trim(), sayfa: 1 });
+    Object.assign(durum, { sube_id: sube.value, tumu: sube.value ? '' : 'true', durum: drm.value, model_id: model.value, ara: ara.value.trim(), sayfa: 1 });
     yukle();
   };
   for (const el of [sube, drm, model]) el.addEventListener('change', oku);

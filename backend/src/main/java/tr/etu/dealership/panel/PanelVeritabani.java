@@ -58,6 +58,9 @@ public final class PanelVeritabani implements AutoCloseable {
         Connection c = ds.getConnection();
         try (Statement st = c.createStatement()) {
             st.execute("SET LOCAL ROLE " + rol.ad());
+            // View'lar current_date/now() kullanır: uygulama ile aynı gün sınırı
+            // (Europe/Istanbul) olsun. Aksi halde 00:00–03:00 arası tarih kayar.
+            st.execute("SET LOCAL TIME ZONE 'Europe/Istanbul'");
             return c;
         } catch (SQLException e) {
             c.close();

@@ -183,17 +183,30 @@ public final class Istek {
     }
 
     public String metin(String ad, int enFazla) {
+        String s = hamMetin(ad, enFazla);
+        if (s == null) return null;
+        String t = s.trim();
+        return t.isEmpty() ? null : t;
+    }
+
+    /** Trim uygulanmaz (şifre gibi boşluğun anlamlı olduğu alanlar). */
+    public String hamMetin(String ad, int enFazla) {
         Object v = govde().get(ad);
         if (v == null) return null;
         if (!(v instanceof String s)) throw gecersiz(ad + " metin olmalı.");
-        String t = s.trim();
-        if (t.isEmpty()) return null;
-        if (t.length() > enFazla) throw gecersiz(ad + " en fazla " + enFazla + " karakter olabilir.");
-        return t;
+        if (s.isEmpty()) return null;
+        if (s.length() > enFazla) throw gecersiz(ad + " en fazla " + enFazla + " karakter olabilir.");
+        return s;
     }
 
     public String zorunluMetin(String ad, int enFazla) {
         String v = metin(ad, enFazla);
+        if (v == null) throw gecersiz(ad + " zorunlu.");
+        return v;
+    }
+
+    public String hamZorunluMetin(String ad, int enFazla) {
+        String v = hamMetin(ad, enFazla);
         if (v == null) throw gecersiz(ad + " zorunlu.");
         return v;
     }

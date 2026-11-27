@@ -45,6 +45,7 @@ GUN=$(python3 -c 'import datetime as d; t=d.date.today()+d.timedelta(days=7); pr
 GECMIS=$(python3 -c 'import datetime as d; t=d.date.today()-d.timedelta(days=14); print(t+d.timedelta(days=(1-t.weekday())%7))')
 
 echo "==> PostgreSQL 17 test konteyneri başlatılıyor..."
+docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 docker run --rm -d --name "$CONTAINER" -e POSTGRES_PASSWORD="$PW" -p 127.0.0.1:$PORT:5432 \
   postgres:17-alpine >/dev/null
 hazir=0
@@ -249,6 +250,11 @@ bekle "İşten ayrılmış (aktif_mi=false) çalışan giremez" 401 '"kod":"GIRI
   -X POST -H "$JSON" -d "{\"kullanici_adi\":\"eski\",\"sifre\":\"$SIFRE\"}" "$TABAN/panel/giris"
 bekle "bcrypt biçiminde olmayan hash 500 değil 401" 401 '"kod":"GIRIS_HATALI"' \
   -X POST -H "$JSON" -d "{\"kullanici_adi\":\"bozuk\",\"sifre\":\"$SIFRE\"}" "$TABAN/panel/giris"
+bekle "Şifre trim edilmez: sonunda boşluk yanlış şifre" 401 '"kod":"GIRIS_HATALI"' \
+  -X POST -H "$JSON" -d "{\"kullanici_adi\":\"cansu\",\"sifre\":\"$SIFRE \"}" "$TABAN/panel/giris"
+python3 -c 'print("{\"kullanici_adi\":\"ayse\",\"sifre\":\"" + "a"*5000 + "\"}")' > /tmp/md-buyuk-govde.json
+bekle "Giriş gövdesi 4 KB sınırı 400" 400 'çok büyük' \
+  -X POST -H "$JSON" --data-binary @/tmp/md-buyuk-govde.json "$TABAN/panel/giris"
 bekle "Şifre eksik 400" 400 '"kod":"GECERSIZ_PARAMETRE"' \
   -X POST -H "$JSON" -d '{"kullanici_adi":"ayse"}' "$TABAN/panel/giris"
 bekle "Bilinmeyen alan 400" 400 'Bilinmeyen alan: rol' \
@@ -291,6 +297,16 @@ bekle "Çıkış 200" 200 '"cikis":true' -X POST -H "Authorization: Bearer $CIKI
 bekle "Çıkıştan sonra aynı anahtar geçersiz" 401 '"kod":"OTURUM_YOK"' \
   -H "Authorization: Bearer $CIKIS_TOKEN" "$TABAN/panel/katalog"
 bekle "Oturumsuz çıkış da 200 (bilgi sızmaz)" 200 '"cikis":true' -X POST "$TABAN/panel/cikis"
+
+# İşten ayrılan çalışanın oturumu sonraki istekte düşer (her istekte aktif_mi).
+CANSU_TOKEN=$(giris cansu)
+[ -n "$CANSU_TOKEN" ] && gec "Aktif çalışan oturum açtı" || kal "Cansu oturumu açılamadı"
+$PSQL -c "UPDATE calisan SET aktif_mi = false WHERE kullanici_adi = 'cansu'" >/dev/null
+bekle "İşten ayrılan çalışanın oturumu 401 (aktif_mi her istekte)" 401 '"kod":"OTURUM_YOK"' \
+  -H "Authorization: Bearer $CANSU_TOKEN" "$TABAN/panel/katalog"
+$PSQL -c "UPDATE calisan SET aktif_mi = true WHERE kullanici_adi = 'cansu'" >/dev/null
+bekle "Aktifleştirilen çalışan yeniden giriş yapabilir" 200 '"oturum"' \
+  -X POST -H "$JSON" -d "{\"kullanici_adi\":\"cansu\",\"sifre\":\"$SIFRE\"}" "$TABAN/panel/giris"
 
 # ============================================================================
 echo "--- Veritabanı rolü (fail-closed) ---"
@@ -397,6 +413,12 @@ randevu_ekle "Araçsız türde araç verilirse 400" 400 'araç seçilmez' \
 randevu_ekle "calisan_id metin 400" 400 'calisan_id tam sayı' "$(govde +905550000002 ARAC_INCELEME '"2"' 13:00)"
 randevu_ekle "Bilinmeyen alan 400 (kaynak elle verilemez)" 400 'Bilinmeyen alan: kaynak' \
   "$(govde +905550000002 ARAC_INCELEME 2 13:00 ',"kaynak":"WHATSAPP"')"
+randevu_ekle "Başka müşterinin aracına servis randevusu 409 (sahiplik)" 409 '"kod":"ARAC_UYGUN_DEGIL"' \
+  "$(govde +905550000002 SERVIS_GIRIS 3 13:00 ',"arac_vin":"PNL00000000000004"')"
+randevu_ekle "Teslime hazır olmayan araca SERVIS_TESLIM 409" 409 '"kod":"ARAC_UYGUN_DEGIL"' \
+  "$(govde +905550000001 SERVIS_TESLIM 3 13:00 ',"arac_vin":"PNL00000000000004"')"
+randevu_ekle "VIN küçük harfle de kabul edilir (normalize)" 201 '"arac_vin":"PNL00000000000001"' \
+  "$(govde +905550000002 TEST_SURUSU 1 13:00 ',"arac_vin":"pnl00000000000001"')"
 randevu_ekle "Çalışan dolu 409 SLOT_DOLU/CALISAN_DOLU" 409 '"sebep":"CALISAN_DOLU"' \
   "$(govde +905550000077 TEST_SURUSU 1 10:30 ',"ad":"Can","soyad":"Er","arac_vin":"PNL00000000000002"')"
 randevu_ekle "Araç dolu 409 ARAC_DOLU" 409 '"sebep":"ARAC_DOLU"' \
@@ -435,6 +457,25 @@ case "$SONUC" in
   *) kal "Eşzamanlı istek sonucu beklenmedik: $SONUC" ;;
 esac
 
+# Müşteri yarışı: aynı yeni telefonla iki paralel istek → ikisi de 201, tek müşteri
+curl -s -o /tmp/md-yeni1.json -w '%{http_code}' -X POST -H "$AUTH" -H "$JSON" \
+  -d "$(govde +905550000097 ARAC_INCELEME 1 15:00 ',"ad":"Yarış","soyad":"Test"')" \
+  "$TABAN/panel/randevu" > /tmp/md-yeni1.kod &
+P1=$!
+curl -s -o /tmp/md-yeni2.json -w '%{http_code}' -X POST -H "$AUTH" -H "$JSON" \
+  -d "$(govde +905550000097 ARAC_INCELEME 7 16:00 ',"ad":"Yarış","soyad":"Test"')" \
+  "$TABAN/panel/randevu" > /tmp/md-yeni2.kod &
+P2=$!
+wait "$P1" || true; wait "$P2" || true
+SONUC="$(cat /tmp/md-yeni1.kod) $(cat /tmp/md-yeni2.kod)"
+case "$SONUC" in
+  "201 201") gec "Aynı yeni telefonla eşzamanlı iki randevu 500 vermez ($SONUC)" ;;
+  *) kal "Müşteri yarışı beklenmedik: $SONUC ($(cat /tmp/md-yeni1.json) $(cat /tmp/md-yeni2.json))" ;;
+esac
+N=$(docker exec "$CONTAINER" psql -U postgres -d postgres -tAc \
+  "SELECT count(*) FROM musteri WHERE telefon = '+905550000097'" | tr -d ' ')
+[ "$N" = "1" ] && gec "Yarışta tek müşteri satırı oluştu" || kal "Aynı telefondan $N müşteri satırı"
+
 # ============================================================================
 echo "--- POST /panel/randevu/{id}/durum ---"
 # durum <ad> <beklenen_durum> <parca> <id> <hedef>
@@ -456,6 +497,10 @@ randevu_ekle "İptal edilen saat yeniden verilebilir (EXCLUDE iptali saymaz)" 20
 # ============================================================================
 echo "--- GET /panel/arac ---"
 bekle "Varsayılan: oturumdaki şubenin araçları" 200 '"sube_id":1,"toplam":4' -H "$AUTH" "$TABAN/panel/arac"
+bekle "tumu=true: tüm şubeler (sessiz daraltma yok)" 200 '"sube_id":null,"toplam":6' \
+  -H "$AUTH" "$TABAN/panel/arac?tumu=true"
+bekle "sube_id ile tumu çakışır 400" 400 'birlikte gönderilemez' \
+  -H "$AUTH" "$TABAN/panel/arac?sube_id=1&tumu=true"
 bekle "Araç satırı model, paket, fiyat ve şube adını taşır" 200 \
   '{"vin":"PNL00000000000001","plaka":null,"model_id":1,"model_adi":"Ioniq 5","paket_adi":"Advance","model_yili":2024,"renk":"Beyaz","durum":"STOKTA","tahmini_varis_tarihi":null,"sube_id":1,"sube_adi":"Çankaya","liste_fiyati":2000000}' \
   -H "$AUTH" "$TABAN/panel/arac"
@@ -496,6 +541,9 @@ bekle "POST /panel/arac 405" 405 '"kod":"YONTEM_DESTEKLENMIYOR"' -X POST -H "$AU
 # ============================================================================
 echo "--- GET /panel/servis ---"
 bekle "Varsayılan: oturumdaki şubenin servis kayıtları" 200 '"sube_id":1,"toplam":4' -H "$AUTH" "$TABAN/panel/servis"
+bekle "tumu=true: tüm şubeler" 200 '"sube_id":null,"toplam":4' -H "$AUTH" "$TABAN/panel/servis?tumu=true"
+bekle "sube_id ile tumu çakışır 400" 400 'birlikte gönderilemez' \
+  -H "$AUTH" "$TABAN/panel/servis?sube_id=1&tumu=true"
 bekle "Açık kayıtlar önce, tahmini teslim tarihine göre" 200 '"servisler":[{"servis_kaydi_id":1,' -H "$AUTH" "$TABAN/panel/servis"
 bekle "Satır araç, model, müşteri ve masrafı taşır" 200 \
   '"servis_kaydi_id":1,"sube_id":1,"arac_vin":"PNL00000000000004","plaka":"06ABC123","model_adi":"Ioniq 5","musteri_id":1,"musteri":"Ali Veli","sebep":"ARIZA"' \
@@ -571,6 +619,12 @@ bekle "% joker değil" 200 '"toplam":0' -H "$AUTH" "$TABAN/panel/musteri?ara=%25
 bekle "Adı bilinmeyen müşteri telefonla bulunur" 200 '"ad":null,"soyad":null,"telefon":"+905550000003"' \
   -H "$AUTH" "$TABAN/panel/musteri?ara=%2B905550000003"
 bekle "Çok uzun arama 400" 400 'en fazla 64' -H "$AUTH" "$TABAN/panel/musteri?ara=$(printf 'a%.0s' $(seq 1 65))"
+bekle "telefon tam eşleşme (önek değil)" 200 '"toplam":1,"musteriler":[{"musteri_id":1' \
+  -H "$AUTH" "$TABAN/panel/musteri?telefon=%2B905550000001"
+bekle "telefon öneki tam eşleşme sayılmaz" 200 '"toplam":0' \
+  -H "$AUTH" "$TABAN/panel/musteri?telefon=%2B90555000000"
+bekle "telefon ile ara birlikte 400" 400 'birlikte gönderilemez' \
+  -H "$AUTH" "$TABAN/panel/musteri?telefon=%2B905550000001&ara=ali"
 
 echo "--- GET /panel/musteri/{id} ---"
 bekle "Müşteri kartı: iletişim bilgisi" 200 '"musteri_id":1,"ad":"Ali","soyad":"Veli","telefon":"+905550000001"' \
@@ -679,6 +733,29 @@ if grep -rqE 'innerHTML|outerHTML|insertAdjacentHTML|document\.write' panel/; th
 else
   gec "Arayüz HTML ayrıştırmaz (veri yalnızca metin düğümü olarak eklenir)"
 fi
+
+# Servisten teslim: teslime hazır kayıt varsa panelden randevu açılabilir
+$PSQL -c "INSERT INTO servis_durum_gecmisi (servis_kaydi_id, durum) VALUES (2, 'TESLIME_HAZIR')" >/dev/null
+randevu_ekle "Teslime hazır araç için SERVIS_TESLIM 201" 201 '"tur_kodu":"SERVIS_TESLIM"' \
+  "$(govde +905550000002 SERVIS_TESLIM 3 15:00 ',"arac_vin":"PNL00000000000005"')"
+
+# ============================================================================
+echo "--- Giriş IP sınırı (son test: bu IP bir dakika kilitlenir) ---"
+KOD=000; n=0
+while [ "$n" -lt 100 ]; do
+  n=$((n + 1))
+  KOD=$(curl -s -o /tmp/md-ip-sinir.json -w '%{http_code}' -X POST -H "$JSON" \
+    -d "{\"kullanici_adi\":\"ip$n\",\"sifre\":\"yanlis\"}" "$TABAN/panel/giris")
+  [ "$KOD" = "429" ] && break
+done
+if [ "$KOD" = "429" ] && grep -q '"kod":"COK_DENEME"' /tmp/md-ip-sinir.json; then
+  gec "IP başına giriş sınırı $n. istekte 429 (kullanıcı adından bağımsız)"
+else
+  kal "IP sınırı tetiklenmedi (son kod $KOD, $n istek)"
+fi
+KOD=$(curl -s -o /tmp/md-ip-sinir2.json -w '%{http_code}' -X POST -H "$JSON" \
+  -d "{\"kullanici_adi\":\"ayse\",\"sifre\":\"$SIFRE\"}" "$TABAN/panel/giris")
+[ "$KOD" = "429" ] && gec "Sınırlı IP doğru şifreyle de 429 alır" || kal "Sınırlı IP $KOD aldı"
 
 # ============================================================================
 echo "--- Başlangıç ve yapılandırma ---"

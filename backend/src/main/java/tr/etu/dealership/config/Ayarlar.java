@@ -90,6 +90,12 @@ public final class Ayarlar {
     /** Ortam değişkenlerinden ayarları okur; zorunlu alanlar eksikse açık hata verir. */
     public static Ayarlar ortamdan() {
         int httpPort = sayi("HTTP_PORT", "8080");
+        String panelDbUser = env("PANEL_DB_USER", null);
+        int oturum = sayi("PANEL_OTURUM_SANIYE", "28800");
+        if (oturum < 1 || oturum > 7 * 24 * 3600) {
+            throw new IllegalStateException(
+                    "PANEL_OTURUM_SANIYE 1 ile 604800 (7 gün) arasında olmalı: " + oturum);
+        }
         return new Ayarlar(
                 env("DB_HOST", "localhost"),
                 sayi("DB_PORT", "5432"),
@@ -108,9 +114,9 @@ public final class Ayarlar {
                 env("MISTRAL_MODEL", "ministral-3b-latest"),
                 env("MISTRAL_URL", "https://api.mistral.ai/v1"),
                 env("MISTRAL_EFOR", null),
-                env("PANEL_DB_USER", null),
-                env("PANEL_DB_USER", null) == null ? null : zorunlu("PANEL_DB_PASS"),
-                sayi("PANEL_OTURUM_SANIYE", "28800")
+                panelDbUser,
+                panelDbUser == null ? null : zorunlu("PANEL_DB_PASS"),
+                oturum
         );
     }
 

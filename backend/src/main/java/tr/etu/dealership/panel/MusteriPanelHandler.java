@@ -31,11 +31,20 @@ public final class MusteriPanelHandler extends PanelHandler {
      * içinde geçen metin. İkisinde de LIKE yok: kullanıcı girdisi joker olmasın.
      */
     private Object listele(Istek i) throws Exception {
-        i.yalnizca(Set.of("ara", "limit", "sayfa"));
+        i.yalnizca(Set.of("ara", "telefon", "limit", "sayfa"));
         String ara = i.metinParam("ara");
+        String tamTelefon = i.metinParam("telefon");
         String telefon = null;
         String isim = null;
-        if (ara != null) {
+        if (tamTelefon != null) {
+            // Tam eşleşme: randevu ekranı "bu müşteri kayıtlı mı" sorusunu
+            // önek aramasına bırakmaz (benzer numaralı müşteri yanlış eşleşiyordu).
+            tamTelefon = tamTelefon.replace(" ", "");
+            if (!tamTelefon.matches("\\+?\\d{8,15}")) {
+                throw Istek.gecersiz("telefon E.164 biçiminde olmalı.");
+            }
+            if (ara != null) throw Istek.gecersiz("ara ile telefon birlikte gönderilemez.");
+        } else if (ara != null) {
             if (ara.length() > 64) throw Istek.gecersiz("ara en fazla 64 karakter olabilir.");
             String sade = ara.replace(" ", "");
             if (sade.matches("\\+?\\d+")) telefon = sade; else isim = ara;
@@ -43,13 +52,14 @@ public final class MusteriPanelHandler extends PanelHandler {
         int limit = i.limit();
         int sayfa = i.sayfa();
         String kosul = """
-                 WHERE (?::varchar IS NULL OR left(mu.telefon, length(?)) = ?)
+                 WHERE (?::varchar IS NULL OR mu.telefon = ?)
+                   AND (?::varchar IS NULL OR left(mu.telefon, length(?)) = ?)
                    AND (?::varchar IS NULL
                         OR position(lower(?) IN lower(concat_ws(' ', mu.ad, mu.soyad))) > 0)
                 """;
         Map<String, Object> veri = new LinkedHashMap<>();
         try (PreparedStatement ps = i.conn().prepareStatement("SELECT count(*) FROM musteri mu" + kosul)) {
-            parametreler(ps, telefon, isim);
+            parametreler(ps, tamTelefon, telefon, isim);
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 veri.put("toplam", rs.getLong(1));
@@ -62,7 +72,7 @@ public final class MusteriPanelHandler extends PanelHandler {
                   FROM musteri mu
                   LEFT JOIN v_musteri_son_randevu sr ON sr.musteri_id = mu.musteri_id
                 """ + kosul + " ORDER BY mu.kayit_zamani DESC, mu.musteri_id DESC LIMIT ? OFFSET ?")) {
-            int n = parametreler(ps, telefon, isim);
+            int n = parametreler(ps, tamTelefon, telefon, isim);
             ps.setInt(n++, limit);
             ps.setLong(n, (long) (sayfa - 1) * limit);
             veri.put("musteriler", Satirlar.liste(ps));
@@ -70,9 +80,10 @@ public final class MusteriPanelHandler extends PanelHandler {
         return veri;
     }
 
-    private static int parametreler(PreparedStatement ps, String telefon, String isim)
+    private static int parametreler(PreparedStatement ps, String tamTelefon, String telefon, String isim)
             throws SQLException {
         int n = 1;
+        for (int k = 0; k < 2; k++) ps.setString(n++, tamTelefon);
         for (int k = 0; k < 3; k++) ps.setString(n++, telefon);
         for (int k = 0; k < 2; k++) ps.setString(n++, isim);
         return n;

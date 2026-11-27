@@ -33,9 +33,14 @@ Yanlış kullanıcı adı ile yanlış şifre **aynı** hatayı döner
 (`401 GIRIS_HATALI`) — hangi kullanıcı adlarının var olduğu sızmasın.
 Bir kullanıcı adında art arda 5 hatalı girişten sonra o ad 1 dakika kilitlenir
 (`429 COK_DENEME`; doğru şifre de reddedilir, diğer kullanıcılar etkilenmez).
+Ayrıca **IP başına** dakikada 60 giriş denemesi sınırı vardır (kullanıcı adından
+bağımsız, `429 COK_DENEME`); giriş gövdesi 4 KB'ı aşamaz. bcrypt, DB bağlantısı
+kapandıktan sonra çalışır. Her istekte çalışanın `aktif_mi` değeri yeniden
+denetlenir: işten ayrılan çalışanın oturumu bir sonraki istekte düşer.
 
-Bütün yanıtlar `Cache-Control: no-store` taşır (müşteri bilgisi tarayıcı
-önbelleğinde kalmasın).
+Bütün **API** yanıtları `Cache-Control: no-store` taşır (müşteri bilgisi
+tarayıcı önbelleğinde kalmasın). Statik panel dosyaları `no-cache` ile
+doğrulanır.
 
 ### Veritabanı rolü
 
@@ -167,7 +172,9 @@ Hatalar: `GECMIS_TARIH 400`, `GECERSIZ_SAAT 400` (mesai/tür penceresi dışı),
 hangi EXCLUDE kısıtına takıldığı), `CALISAN_UYGUN_DEGIL 409` (elle seçilen
 çalışan; `220_trg_randevu_dogrula`'dan, `detay.sebep`: `PASIF` | `BASKA_SUBE` |
 `DEPARTMAN` | `YETKINLIK_YOK`), `ARAC_UYGUN_DEGIL 409` (test sürüşü aracı
-şubede `STOKTA` değil, yoldaki aracın teslimi varıştan önce),
+şubede `STOKTA` değil, yoldaki aracın teslimi varıştan önce, servis
+randevusunda araç müşterinin kendi aracı değil ya da teslim için açık/TESLİME
+HAZIR servis kaydı yok; `detay.sebep`),
 `BULUNAMADI 404` (şube/tür/çalışan/araç).
 
 ## 5. `POST /panel/randevu/{id}/durum`
@@ -194,6 +201,7 @@ saat, EXCLUDE kısıtı iptalleri saymadığı için yeniden verilebilir.
 | Parametre | Açıklama |
 |---|---|
 | `sube_id` | Varsayılan oturumdaki şube |
+| `tumu` | `true`: tüm şubeler ( `sube_id` ile birlikte gönderilemez) |
 | `durum` | `STOKTA`, `YOLDA`, `SATILDI` |
 | `ara` | VIN veya plaka öneki (büyük/küçük harf ve boşluk önemsiz, en fazla 17 karakter). `sube_id` verilmezse **tüm şubelerde** aranır |
 | `model_id` | Filtre |
@@ -227,6 +235,7 @@ Detayda ayrıca `sahip` (satılmışsa `musteri_id, ad_soyad, telefon`, değilse
 | Parametre | Açıklama |
 |---|---|
 | `sube_id` | Varsayılan oturumdaki şube |
+| `tumu` | `true`: tüm şubeler (`sube_id` ile birlikte gönderilemez) |
 | `acik` | `true`: `kapandi_mi = false` |
 | `gecikti` | `true`: `gecikti_mi = true` |
 | `ara` | VIN veya plaka öneki (araçlardaki gibi; `sube_id` verilmezse tüm şubeler) |
@@ -275,16 +284,19 @@ Hatalar (`210_trg_servis_garanti` trigger'ından çevrilir):
 - `KAPALI_KAYIT 409` — kapanmış servis kaydına işlem/durum eklenemez
   (backend kuralı; DB'de kısıt yok).
 
-> Servis kaydı **açma** (`SERVIS_GIRIS` randevusundan) ve **teslim**
-> (`SERVIS_TESLIM`) bu sözleşmenin kapsamı dışındadır; kuralları bot tarafındaki
-> SERVIS_TESLIM akışıyla ortak olduğu için backend sahibiyle birlikte eklenecek.
+> Servis kaydı **açma** (`SERVIS_GIRIS` randevusundan) bu sözleşmenin kapsamı
+> dışındadır. `SERVIS_TESLIM` randevusu `POST /panel/randevu` ile açılabilir;
+> kural bot akışıyla aynıdır (açık ve TESLİME HAZIR servis kaydı) ve DB'de
+> `460_trg_randevu_sahiplik` ile de doğrulanır.
 
 ## 9. Müşteriler
 
 `GET /panel/musteri?ara=` — `ara` `+` veya rakamla başlıyorsa telefon öneki
 (boşluklar atılır), değilse ad/soyad içinde geçen metin (büyük/küçük harf
 önemsiz, joker yok); en fazla 64 karakter. `limit`, `sayfa` ile sayfalanır,
-yeni kayıtlar önce. Satır: `musteri_id, ad, soyad, telefon, kayit_zamani,
+yeni kayıtlar önce. `telefon` verilirse **tam eşleşme** yapılır (randevu
+ekranındaki "kayıtlı mı" kontrolü önek aramasına bırakılmaz; `ara` ile birlikte
+gönderilemez). Satır: `musteri_id, ad, soyad, telefon, kayit_zamani,
 son_randevu_zamani, son_randevu_turu, son_randevu_durumu`
 (`v_musteri_son_randevu`). Adı henüz öğrenilmemiş müşteride `ad`/`soyad` `null`.
 

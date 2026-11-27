@@ -56,6 +56,7 @@ public final class JsonYanit {
     public static void yaz(com.sun.net.httpserver.HttpExchange ex, int durum, byte[] govde)
             throws IOException {
         ex.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+        ex.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
         ex.sendResponseHeaders(durum, govde.length);
         try (OutputStream os = ex.getResponseBody()) {
             os.write(govde);
@@ -67,6 +68,7 @@ public final class JsonYanit {
             throws IOException {
         byte[] govde = metin.getBytes(StandardCharsets.UTF_8);
         ex.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
+        ex.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
         ex.sendResponseHeaders(durum, govde.length);
         try (OutputStream os = ex.getResponseBody()) {
             os.write(govde);

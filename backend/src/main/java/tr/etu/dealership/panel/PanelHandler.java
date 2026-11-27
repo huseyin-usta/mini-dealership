@@ -11,6 +11,8 @@ import tr.edu.etu.dealership.web.JsonYanit;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -53,7 +55,8 @@ public abstract class PanelHandler implements HttpHandler {
     protected record Dosya(byte[] icerik, String turu, String ad) {
     }
 
-    private record Rota(String yontem, Pattern desen, Rol rol, Islem islem) {
+    private record Rota(String yontem, Pattern desen, Rol rol, Islem islem,
+                        boolean baglantiGerekli, int govdeSiniri) {
     }
 
     protected final PanelVeritabani db;
@@ -70,7 +73,19 @@ public abstract class PanelHandler implements HttpHandler {
      * kabul edilir. Gruplar {@link Istek#yolSayi(int)} ile okunur.
      */
     protected final void rota(String yontem, String desen, Rol rol, Islem islem) {
-        rotalar.add(new Rota(yontem, Pattern.compile(desen + "/?"), rol, islem));
+        rota(yontem, desen, rol, islem, AZAMI_GOVDE, true);
+    }
+
+    /**
+     * Bağlantı tutmayan / küçük gövdeli rotalar için.
+     *
+     * <p>{@code baglantiGerekli=false}: handler kendi kısa bağlantısını açar.
+     * Girişte bcrypt, havuz bağlantısı tutulurken çalışmasın diye kullanılır.
+     */
+    protected final void rota(String yontem, String desen, Rol rol, Islem islem,
+                              int govdeSiniri, boolean baglantiGerekli) {
+        rotalar.add(new Rota(yontem, Pattern.compile(desen + "/?"), rol, islem,
+                baglantiGerekli, Math.min(govdeSiniri, AZAMI_GOVDE)));
     }
 
     /** Giriş ucu oturum istemez; diğer her şey ister. */
@@ -82,8 +97,9 @@ public abstract class PanelHandler implements HttpHandler {
     public final void handle(HttpExchange ex) throws IOException {
         try {
             Oturumlar.Oturum oturum = null;
+            String anahtar = bearer(ex);
             if (oturumGerekli()) {
-                Optional<Oturumlar.Oturum> o = oturumlar.bul(bearer(ex));
+                Optional<Oturumlar.Oturum> o = oturumlar.bul(anahtar);
                 if (o.isEmpty()) {
                     hataYaz(ex, 401, "OTURUM_YOK", "Oturum açılmamış veya süresi dolmuş.", null);
                     return;
@@ -115,15 +131,28 @@ public abstract class PanelHandler implements HttpHandler {
             }
 
             // Gövde bağlantı alınmadan önce okunur: yavaş istemci havuzu meşgul etmesin.
+            int govdeSiniri = secilen.govdeSiniri();
             byte[] govde = "POST".equals(ex.getRequestMethod())
-                    ? ex.getRequestBody().readNBytes(AZAMI_GOVDE + 1)
+                    ? ex.getRequestBody().readNBytes(govdeSiniri + 1)
                     : null;
-            Istek istek = new Istek(ex, oturum, eslesme, govde, AZAMI_GOVDE);
+            Istek istek = new Istek(ex, oturum, eslesme, govde, govdeSiniri);
             istek.parametreler();   // tekrarlanan parametre bağlantı alınmadan reddedilsin
+
+            if (!secilen.baglantiGerekli()) {
+                // Handler kendi kısa bağlantısını yönetir (giriş: bcrypt bağlantı dışında).
+                yanitYaz(ex, secilen.islem().calistir(istek));
+                return;
+            }
 
             try (Connection conn = db.baglanti(secilen.rol())) {
                 try {
                     istek.baglan(conn);
+                    // İşten ayrılan çalışanın oturumu 8 saat yaşamasın: her istekte doğrula.
+                    if (oturum != null && !calisanAktifMi(conn, secilen.rol(), oturum.calisanId())) {
+                        oturumlar.kapat(anahtar);
+                        throw ApiHatasi.goster("OTURUM_YOK",
+                                "Oturum açılmamış veya süresi dolmuş.", 401, null);
+                    }
                     Object sonuc = secilen.islem().calistir(istek);
                     conn.commit();
                     yanitYaz(ex, sonuc);
@@ -160,6 +189,7 @@ public abstract class PanelHandler implements HttpHandler {
         ex.getResponseHeaders().set("Cache-Control", "no-store");
         if (sonuc instanceof Dosya d) {
             ex.getResponseHeaders().set("Content-Type", d.turu());
+            ex.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
             ex.getResponseHeaders().set("Content-Disposition",
                     "attachment; filename=\"" + d.ad() + "\"");
             ex.sendResponseHeaders(200, d.icerik().length);
@@ -175,6 +205,33 @@ public abstract class PanelHandler implements HttpHandler {
             veri = y.veri();
         }
         JsonYanit.yaz(ex, durum, JsonYanit.basarili(veri));
+    }
+
+    /**
+     * Oturumdaki çalışan hâlâ aktif mi? (ayrılan çalışanın oturumu yaşamasın)
+     *
+     * <p>{@code rapor} rolü {@code calisan} tablosunu okuyamaz; bu rol için
+     * kontrol kısa süreliğine {@code personel} rolüyle yapılır, sonra istenen
+     * role dönülür (transaction içi, commit'te sıfırlanır).
+     */
+    private static boolean calisanAktifMi(Connection conn, Rol rol, int calisanId) throws SQLException {
+        boolean rolDegisti = rol == Rol.RAPOR;
+        if (rolDegisti) setRole(conn, Rol.PERSONEL);
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT aktif_mi FROM calisan WHERE calisan_id = ?")) {
+            ps.setInt(1, calisanId);
+            try (ResultSet rs = ps.executeQuery()) {
+                boolean aktif = rs.next() && rs.getBoolean(1);
+                if (rolDegisti) setRole(conn, rol);
+                return aktif;
+            }
+        }
+    }
+
+    private static void setRole(Connection conn, Rol rol) throws SQLException {
+        try (var st = conn.createStatement()) {
+            st.execute("SET LOCAL ROLE " + rol.ad());
+        }
     }
 
     private static void hataYaz(HttpExchange ex, int durum, String kod, String mesaj, Object detay)

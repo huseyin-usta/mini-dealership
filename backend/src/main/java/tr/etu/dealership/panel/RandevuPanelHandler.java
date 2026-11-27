@@ -14,13 +14,14 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
 /**
  * Randevu uçları (sözleşme §3–5): listeleme, ekleme, durum değişikliği.
  *
- * <p>Kurallar (mesai, tür saat penceresi, çalışan şubesi/departmanı/yetkinliği,
+ * <p>Kurallar (tür saat penceresi, çalışan şubesi/departmanı/yetkinliği,
  * çakışma) DB'de: trigger ({@code 220_trg_randevu_dogrula}) ve EXCLUDE
  * kısıtları. Handler bunları tekrar yazmaz, DB hatasını sözleşme koduna çevirir.
  */
@@ -133,6 +134,7 @@ public final class RandevuPanelHandler extends PanelHandler {
         String turKodu = i.zorunluMetin("tur_kodu", 32);
         int calisanId = i.zorunluId("calisan_id");
         String vin = i.metin("arac_vin", 17);
+        if (vin != null) vin = vin.toUpperCase(Locale.ROOT);
         LocalDateTime baslangic = i.zorunluZaman("baslangic");
         String notlar = i.metin("notlar", 1000);
         Connection c = i.conn();
@@ -160,6 +162,7 @@ public final class RandevuPanelHandler extends PanelHandler {
         }
 
         int musteriId = musteriBulVeyaOlustur(c, telefon, ad, soyad);
+        aracUygunMu(c, subeId, turKodu, vin, musteriId);
 
         int randevuId;
         try (PreparedStatement ps = c.prepareStatement("""
@@ -204,8 +207,14 @@ public final class RandevuPanelHandler extends PanelHandler {
         if (ad == null || soyad == null) {
             throw Istek.gecersiz("Yeni müşteri için ad ve soyad zorunlu.");
         }
-        try (PreparedStatement ps = c.prepareStatement(
-                "INSERT INTO musteri (telefon, ad, soyad) VALUES (?, ?, ?) RETURNING musteri_id")) {
+        // Atomik upsert: eşzamanlı iki istek aynı telefonu eklemeye çalışsa da
+        // biri diğerini bekler ve tek satır döner (önce SELECT+INSERT 500 veriyordu).
+        try (PreparedStatement ps = c.prepareStatement("""
+                INSERT INTO musteri (telefon, ad, soyad) VALUES (?, ?, ?)
+                ON CONFLICT (telefon) DO UPDATE
+                   SET ad = coalesce(excluded.ad, musteri.ad),
+                       soyad = coalesce(excluded.soyad, musteri.soyad)
+                RETURNING musteri_id""")) {
             ps.setString(1, telefon);
             ps.setString(2, ad);
             ps.setString(3, soyad);
@@ -214,6 +223,89 @@ public final class RandevuPanelHandler extends PanelHandler {
                 return rs.getInt(1);
             }
         }
+    }
+
+    /**
+     * Aracın türüne göre sahiplik/hazırlık kuralı (db/460 ile aynı).
+     * DB trigger'ı commit'te son savunmadır; burada anlaşılır 409 üretilir.
+     */
+    private static void aracUygunMu(Connection c, int subeId, String turKodu, String vin, int musteriId)
+            throws SQLException {
+        if (vin == null) return;
+
+        if ("SERVIS_TESLIM".equals(turKodu)) {
+            boolean hazir;
+            String sonDurum;
+            try (PreparedStatement ps = c.prepareStatement("""
+                    SELECT coalesce(bool_or(g.durum = 'TESLIME_HAZIR'), false) AS hazir,
+                           coalesce((array_agg(g.durum ORDER BY g.zaman DESC, g.gecmis_id DESC))[1],
+                                    'KAYIT_YOK') AS son_durum
+                      FROM servis_kaydi sk
+                      JOIN randevu ac ON ac.randevu_id = sk.acilis_randevu_id
+                      LEFT JOIN LATERAL (
+                            SELECT d.durum, d.zaman, d.gecmis_id
+                              FROM servis_durum_gecmisi d
+                             WHERE d.servis_kaydi_id = sk.servis_kaydi_id
+                             ORDER BY d.zaman DESC, d.gecmis_id DESC
+                             LIMIT 1
+                           ) g ON true
+                     WHERE ac.arac_vin = ? AND ac.musteri_id = ?
+                       AND ac.sube_id = ? AND sk.teslim_randevu_id IS NULL
+                    """)) {
+                ps.setString(1, vin);
+                ps.setInt(2, musteriId);
+                ps.setInt(3, subeId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    rs.next();
+                    hazir = rs.getBoolean(1);
+                    sonDurum = rs.getString(2);
+                }
+            }
+            if (!hazir) {
+                throw aracUygun("SERVIS_TESLIM_HAZIR_DEGIL",
+                        "Araç serviste değil ya da teslime hazır değil (son durum: " + sonDurum + ").");
+            }
+            return;
+        }
+
+        try (PreparedStatement ps = c.prepareStatement(
+                "SELECT durum, sube_id, musteri_id FROM arac WHERE vin = ?")) {
+            ps.setString(1, vin);
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                String durum = rs.getString(1);
+                int aracSube = rs.getInt(2);
+                Integer sahip = rs.getObject(3) == null ? null : rs.getInt(3);
+
+                if ("TEST_SURUSU".equals(turKodu)) {
+                    if (!"STOKTA".equals(durum)) {
+                        throw aracUygun("STOKTA_DEGIL", "Test sürüşü aracı stokta değil.");
+                    }
+                    if (aracSube != subeId) {
+                        throw aracUygun("BASKA_SUBE", "Test sürüşü aracı bu şubede değil.");
+                    }
+                    return;
+                }
+                if ("TESLIMAT".equals(turKodu)) {
+                    if (sahip != null && sahip != musteriId) {
+                        throw aracUygun("SAHIP_FARKLI", "Bu araç başka bir müşteriye satılmış.");
+                    }
+                    if (aracSube != subeId) {
+                        throw aracUygun("BASKA_SUBE", "Araç bu şubede değil.");
+                    }
+                    return;
+                }
+                // PERIYODIK_BAKIM / SERVIS_GIRIS
+                if (!"SATILDI".equals(durum) || sahip == null || sahip != musteriId) {
+                    throw aracUygun("SAHIP_FARKLI",
+                            "Servis randevusunda araç müşterinin kendi aracı olmalı.");
+                }
+            }
+        }
+    }
+
+    private static ApiHatasi aracUygun(String sebep, String mesaj) {
+        return ApiHatasi.goster("ARAC_UYGUN_DEGIL", mesaj, 409, Map.of("sebep", sebep));
     }
 
     /**

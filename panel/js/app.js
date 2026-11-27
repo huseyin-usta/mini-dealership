@@ -28,7 +28,14 @@ let katalog = null;
 
 function rotaCoz() {
   const [ad = '', ...kalan] = location.hash.replace(/^#\/?/, '').split('/');
-  return { ad, parametre: kalan.length ? decodeURIComponent(kalan.join('/')) : null };
+  if (!kalan.length) return { ad, parametre: null };
+  try {
+    return { ad, parametre: decodeURIComponent(kalan.join('/')) };
+  } catch {
+    // Bozuk yüzde kodlaması: çökme yerine ilk menüye dön.
+    location.hash = `#/${MENU[0][0]}`;
+    return { ad: MENU[0][0], parametre: null };
+  }
 }
 
 async function cizdir() {
